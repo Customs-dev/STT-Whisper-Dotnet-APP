@@ -75,8 +75,10 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Přepíše WAV stream do textu. Vrátí celý přepsaný text.
+    /// <paramref name="onSegment"/> je volán pro každý segment ihned po jeho zpracování (streaming).
     /// </summary>
-    public async Task<string> TranscribeAsync(Stream wavStream, CancellationToken ct = default)
+    public async Task<string> TranscribeAsync(Stream wavStream, CancellationToken ct = default,
+        Func<string, Task>? onSegment = null)
     {
         if (!_initialized || _processor is null)
             throw new InvalidOperationException("Transcriber není inicializován. Zavolejte Initialize().");
@@ -93,7 +95,14 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
             string segText = segment.Text.Trim();
             Log($"  segment #{segCount}: \"{segText}\"");
             if (!string.IsNullOrWhiteSpace(segText) && !IsHallucination(segText))
+            {
                 segments.Append(segText).Append(' ');
+                if (onSegment is not null)
+                {
+                    try { await onSegment(segText); }
+                    catch (Exception ex) { Log($"  onSegment callback chyba: {ex.Message}"); }
+                }
+            }
         }
 
         var result = segments.ToString().Trim();

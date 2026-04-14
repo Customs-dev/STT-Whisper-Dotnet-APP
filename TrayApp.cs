@@ -317,7 +317,12 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(
                 _settings.ChunkIntervalSeconds * 6 + 30));
 
-            var text = await _transcriber.TranscribeAsync(chunk, cts.Token);
+            // Streaming: každý segment ihned pošleme WebSocket klientům
+            Func<string, Task>? wsCallback = (_settings.EnableWebSocket && _wsServer is not null)
+                ? seg => _wsServer.BroadcastAsync(seg)
+                : null;
+
+            var text = await _transcriber.TranscribeAsync(chunk, cts.Token, wsCallback);
             WhisperTranscriber.AppLog($"  chunk hotovo: \"{text}\"");
 
             if (!string.IsNullOrWhiteSpace(text))
@@ -327,9 +332,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 lock (_chunkAccum)
                     _chunkAccum.Append(text.TrimEnd()).Append(' ');
                 WhisperTranscriber.AppLog($"  chunk akumulován ({_chunkAccum.Length} znaků)");
-
-                if (_settings.EnableWebSocket && _wsServer is not null)
-                    await _wsServer.BroadcastAsync(text);
+                // WebSocket segmenty již odeslány průběžně přes wsCallback výše
             }
         }
         catch (Exception ex)
@@ -391,7 +394,11 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 }
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                var text = await _transcriber.TranscribeAsync(wavStream, cts.Token);
+                // Streaming: každý segment ihned pošleme WebSocket klientům
+                Func<string, Task>? wsCallback = (_settings.EnableWebSocket && _wsServer is not null)
+                    ? seg => _wsServer.BroadcastAsync(seg)
+                    : null;
+                var text = await _transcriber.TranscribeAsync(wavStream, cts.Token, wsCallback);
                 sw.Stop();
 
                 // Spoj akumulované chunky + finální přepis do jednoho textu
@@ -420,9 +427,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 WhisperTranscriber.AppLog($"paste hotovo");
 
                 _uiContext.Post(_ => ShowBalloon("Prompto – přepsáno", preview, ToolTipIcon.Info, 4000), null);
-
-                if (_settings.EnableWebSocket && _wsServer is not null)
-                    await _wsServer.BroadcastAsync(fullText);
+                // WebSocket segmenty již odeslány průběžně přes wsCallback výše
             }
             catch (OperationCanceledException)
             {
