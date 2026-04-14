@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SttApp</RootNamespace>
+    <AssemblyName>Prompto</AssemblyName>
+    <Product>Prompto</Product>
+    <AssemblyTitle>Prompto</AssemblyTitle>
+    <Description>Prompto – hlasový přepis s Whisper</Description>
+    <ApplicationIcon>prompto.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <!-- Publish: dotnet publish -r win-x64 -p:SelfContained=true -p:PublishSingleFile=true -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="Whisper.net" Version="1.7.2" />
+    <!--
+      Vulkan runtime: GPU akcelerace pres Vulkan (RTX 4060 plne podporuje Vulkan 1.3).
+      Vulkan je soucasti NVIDIA ovladacu - zadna extra instalace nepotrebna.
+      Fallback na CPU pokud Vulkan neni dostupny.
+    -->
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.7.2" />
+    <!-- CPU fallback pro pripad, ze Vulkan selze -->
+    <PackageReference Include="Whisper.net.Runtime" Version="1.7.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
