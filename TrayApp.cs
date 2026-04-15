@@ -308,8 +308,10 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         if (_settings.ChunkIntervalSeconds > 0)
         {
             int intervalMs = _settings.ChunkIntervalSeconds * 1000;
+            // První chunk pošli dříve, aby stream běžel i u kratších nahrávek.
+            int firstTickMs = Math.Min(1500, intervalMs);
             _chunkTimer = new System.Threading.Timer(
-                OnChunkTimerTick, null, intervalMs, intervalMs);
+                OnChunkTimerTick, null, firstTickMs, intervalMs);
         }
     }
 

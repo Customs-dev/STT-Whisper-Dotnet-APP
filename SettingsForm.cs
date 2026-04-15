@@ -16,6 +16,7 @@ public sealed class SettingsForm : Form
     private readonly TextBox     _tbLanguage;
     private readonly CheckBox    _chkWs;
     private readonly TextBox     _tbWsPort;
+    private readonly TextBox     _tbChunkSeconds;
     private bool                 _capturingHotkey;
 
     public SettingsForm(AppSettings settings)
@@ -144,6 +145,9 @@ public sealed class SettingsForm : Form
 
         AddRow("Port:", _tbWsPort, "Výchozí: 5050");
 
+        _tbChunkSeconds = new TextBox { Text = _settings.ChunkIntervalSeconds.ToString(), BackColor = Color.White };
+        AddRow("Chunk interval (s):", _tbChunkSeconds, "0 = vypnuto, doporučeno 2-4 s pro živý stream");
+
         // SPACER
         tbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var spacer = new Panel { BackColor = ColBg, Dock = DockStyle.Fill };
@@ -216,6 +220,7 @@ public sealed class SettingsForm : Form
     private void ApplyToSettings()
     {
         if (int.TryParse(_tbWsPort.Text, out var p)) _settings.WebSocketPort = p;
+        if (int.TryParse(_tbChunkSeconds.Text, out var c)) _settings.ChunkIntervalSeconds = Math.Max(0, c);
         _settings.EnableWebSocket = _chkWs.Checked;
         _settings.Language        = _tbLanguage.Text.Trim();
         _settings.ModelPath       = _tbModelPath.Text.Trim();
