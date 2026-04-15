@@ -30,8 +30,12 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
     private System.Threading.Timer? _chunkTimer;
     // Serialize chunk transcription (jen jeden chunk současně)
     private readonly System.Threading.SemaphoreSlim _chunkSem = new(1, 1);
+    // Serialize live chunk paste operations (zabrání překryvu paste vláken)
+    private readonly System.Threading.SemaphoreSlim _livePasteSem = new(1, 1);
     // Akumulátor chunků – text se vkládá NAJEDNOU na konci (chunk paste by selhával pro Outlook/Copilot)
     private readonly System.Text.StringBuilder _chunkAccum = new();
+    private bool _liveInsertEnabled;
+    private bool _liveInsertAny;
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -300,12 +304,14 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         // Bez toho by RestoreForeground po 8+ sekundach obnovil focus na reading pane
         _targetChildHwnd = TextInjector.CaptureFocusedEditChild(_targetHwnd);
         _chunkAccum.Clear();
+        _liveInsertEnabled = _settings.EnableWebSocket && _settings.ChunkIntervalSeconds > 0;
+        _liveInsertAny = false;
 
         _recorder.Start();
         SetStatus("Nahrávám...", TrayIconState.Recording);
 
         // Spusť chunk timer (pokud je live mode zapnutý)
-        if (_settings.ChunkIntervalSeconds > 0)
+        if (_settings.EnableWebSocket && _settings.ChunkIntervalSeconds > 0)
         {
             int intervalMs = _settings.ChunkIntervalSeconds * 1000;
             // První chunk pošli dříve, aby stream běžel i u kratších nahrávek.
@@ -336,12 +342,11 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(
                 _settings.ChunkIntervalSeconds * 6 + 30));
 
-            // Streaming: každý segment ihned pošleme WebSocket klientům
-            Func<string, Task>? wsCallback = (_settings.EnableWebSocket && _wsServer is not null)
-                ? seg => _wsServer.BroadcastAsync(seg)
-                : null;
+            IntPtr hwnd = _targetHwnd;
+            IntPtr childHint = _targetChildHwnd;
+            var segmentCallback = BuildSegmentStreamingCallback(hwnd, childHint, allowLiveInsert: true);
 
-            var text = await _transcriber.TranscribeAsync(chunk, cts.Token, wsCallback);
+            var text = await _transcriber.TranscribeAsync(chunk, cts.Token, segmentCallback);
             WhisperTranscriber.AppLog($"  chunk hotovo: \"{text}\"");
 
             if (!string.IsNullOrWhiteSpace(text))
@@ -351,7 +356,6 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 lock (_chunkAccum)
                     _chunkAccum.Append(text.TrimEnd()).Append(' ');
                 WhisperTranscriber.AppLog($"  chunk akumulován ({_chunkAccum.Length} znaků)");
-                // WebSocket segmenty již odeslány průběžně přes wsCallback výše
             }
         }
         catch (Exception ex)
@@ -413,11 +417,8 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 }
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                // Streaming: každý segment ihned pošleme WebSocket klientům
-                Func<string, Task>? wsCallback = (_settings.EnableWebSocket && _wsServer is not null)
-                    ? seg => _wsServer.BroadcastAsync(seg)
-                    : null;
-                var text = await _transcriber.TranscribeAsync(wavStream, cts.Token, wsCallback);
+                var segmentCallback = BuildSegmentStreamingCallback(hwnd, childHint, allowLiveInsert: _liveInsertEnabled);
+                var text = await _transcriber.TranscribeAsync(wavStream, cts.Token, segmentCallback);
                 sw.Stop();
 
                 // Spoj akumulované chunky + finální přepis do jednoho textu
@@ -440,13 +441,19 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 string fullText = (accumulated + text).Trim();
                 string preview = fullText.Length > 120 ? fullText[..120] + "…" : fullText;
 
-                // Paste před ballooněm – balloon může krátce krást focus
-                WhisperTranscriber.AppLog($"paste start, hwnd={hwnd:X} childHint={childHint:X}, celkem {fullText.Length} znaků (chunky: {accumulated.Length}, finální: {text.Length})");
-                await TextInjector.PasteViaClipboardAsync(fullText, hwnd, childHint);
-                WhisperTranscriber.AppLog($"paste hotovo");
+                if (_liveInsertEnabled && _liveInsertAny)
+                {
+                    WhisperTranscriber.AppLog($"paste skip (live inserted), celkem {fullText.Length} znaků");
+                }
+                else
+                {
+                    // Paste před ballooněm – balloon může krátce krást focus
+                    WhisperTranscriber.AppLog($"paste start, hwnd={hwnd:X} childHint={childHint:X}, celkem {fullText.Length} znaků (chunky: {accumulated.Length}, finální: {text.Length})");
+                    await TextInjector.PasteViaClipboardAsync(fullText, hwnd, childHint);
+                    WhisperTranscriber.AppLog($"paste hotovo");
+                }
 
                 _uiContext.Post(_ => ShowBalloon("Prompto – přepsáno", preview, ToolTipIcon.Info, 4000), null);
-                // WebSocket segmenty již odeslány průběžně přes wsCallback výše
             }
             catch (OperationCanceledException)
             {
@@ -482,6 +489,44 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             _trayIcon.Text = $"Prompto – {text}";
             oldIcon?.Dispose();
         }, null);
+    }
+
+    private Func<string, Task>? BuildSegmentStreamingCallback(IntPtr hwnd, IntPtr childHint, bool allowLiveInsert)
+    {
+        bool wsEnabled = _settings.EnableWebSocket && _wsServer is not null;
+        bool liveEnabled = allowLiveInsert && _liveInsertEnabled;
+        if (!wsEnabled && !liveEnabled) return null;
+
+        return async seg =>
+        {
+            var piece = seg?.Trim();
+            if (string.IsNullOrWhiteSpace(piece)) return;
+            string chunkText = piece + " ";
+
+            if (wsEnabled && _wsServer is not null)
+            {
+                try { await _wsServer.BroadcastAsync(piece); }
+                catch (Exception ex) { WhisperTranscriber.AppLog($"[WS] segment send chyba: {ex.Message}"); }
+            }
+
+            if (liveEnabled)
+            {
+                await _livePasteSem.WaitAsync();
+                try
+                {
+                    await TextInjector.PasteViaClipboardAsync(chunkText, hwnd, childHint);
+                    _liveInsertAny = true;
+                }
+                catch (Exception ex)
+                {
+                    WhisperTranscriber.AppLog($"live paste segment chyba: {ex.Message}");
+                }
+                finally
+                {
+                    _livePasteSem.Release();
+                }
+            }
+        };
     }
 
     private void ShowBalloon(string title, string msg,
@@ -559,6 +604,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         {
             _chunkTimer?.Dispose();
             _chunkSem.Dispose();
+            _livePasteSem.Dispose();
             _hotkey.Dispose();
             _recorder.Dispose();
             _transcriber.Dispose();
@@ -574,6 +620,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         _recorder.Dispose();
         _transcriber.Dispose();
         _trayIcon.Dispose();
+        _livePasteSem.Dispose();
         if (_wsServer is not null)
             await _wsServer.DisposeAsync();
     }

@@ -138,14 +138,22 @@ public sealed class SettingsForm : Form
 
         // WEBSOCKET SERVER
         AddSep("WebSocket server");
+        _tbChunkSeconds = new TextBox
+        {
+            Text = _settings.ChunkIntervalSeconds.ToString(),
+            BackColor = Color.White,
+            Enabled = _settings.EnableWebSocket
+        };
         _tbWsPort = new TextBox { Text = _settings.WebSocketPort.ToString(), Enabled = _settings.EnableWebSocket, BackColor = Color.White };
         _chkWs = new CheckBox { Text = "Zapnout WebSocket server", Checked = _settings.EnableWebSocket };
-        _chkWs.CheckedChanged += (_, _) => { _tbWsPort.Enabled = _chkWs.Checked; };
+        _chkWs.CheckedChanged += (_, _) =>
+        {
+            _tbWsPort.Enabled = _chkWs.Checked;
+            _tbChunkSeconds.Enabled = _chkWs.Checked;
+        };
         AddRow("", _chkWs);
 
         AddRow("Port:", _tbWsPort, "Výchozí: 5050");
-
-        _tbChunkSeconds = new TextBox { Text = _settings.ChunkIntervalSeconds.ToString(), BackColor = Color.White };
         AddRow("Chunk interval (s):", _tbChunkSeconds, "0 = vypnuto, doporučeno 2-4 s pro živý stream");
 
         // SPACER
