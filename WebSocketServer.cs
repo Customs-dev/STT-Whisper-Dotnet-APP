@@ -24,15 +24,29 @@ public sealed class WebSocketServer : IAsyncDisposable
     {
         _port = port;
         _listener = new HttpListener();
+        // Přidáme oba prefixes – klient může použít 127.0.0.1 i localhost
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/stt/");
+        _listener.Prefixes.Add($"http://localhost:{port}/stt/");
     }
+
+    /// <summary>URL pro WebSocket klienty (ws://localhost:{port}/stt/)</summary>
+    public string ClientUrl => $"ws://localhost:{_port}/stt/";
 
     public void Start()
     {
         if (IsRunning) return;
         _cts = new CancellationTokenSource();
-        _listener.Start();
+        try
+        {
+            _listener.Start();
+        }
+        catch (Exception ex)
+        {
+            WhisperTranscriber.AppLog($"[WS] Start selhalo (port {_port}): {ex.Message}");
+            throw;
+        }
         IsRunning = true;
+        WhisperTranscriber.AppLog($"[WS] Server spuštěn – {ClientUrl}");
         _acceptTask = AcceptLoopAsync(_cts.Token);
     }
 
@@ -127,7 +141,9 @@ public sealed class WebSocketServer : IAsyncDisposable
         var ws = wsCtx.WebSocket;
         await _lock.WaitAsync(ct);
         _clients.Add(ws);
+        int clientCount = _clients.Count;
         _lock.Release();
+        WhisperTranscriber.AppLog($"[WS] Klient připojen (celkem: {clientCount})");
 
         // Drž spojení - čti (ping/pong/close)
         var buf = new byte[256];
@@ -145,8 +161,10 @@ public sealed class WebSocketServer : IAsyncDisposable
         {
             await _lock.WaitAsync(CancellationToken.None);
             _clients.Remove(ws);
+            int remaining = _clients.Count;
             _lock.Release();
             ws.Dispose();
+            WhisperTranscriber.AppLog($"[WS] Klient odpojen (zbývá: {remaining})");
         }
     }
 

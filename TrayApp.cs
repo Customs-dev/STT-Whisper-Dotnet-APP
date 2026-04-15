@@ -52,7 +52,17 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         if (_settings.EnableWebSocket)
         {
             _wsServer = new WebSocketServer(_settings.WebSocketPort);
-            _wsServer.Start();
+            try
+            {
+                _wsServer.Start();
+            }
+            catch (Exception ex)
+            {
+                _uiContext.Post(_ => ShowBalloon("Prompto – WebSocket chyba",
+                    $"Server nešlo spustit na portu {_settings.WebSocketPort}.\n{ex.Message}",
+                    ToolTipIcon.Error, 8000), null);
+                _wsServer = null;
+            }
         }
 
         // Inicializace Whisperu na pozadí (načítání modelu trvá)
@@ -104,6 +114,13 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Nastavení", null, OpenSettings);
         menu.Items.Add("O aplikaci", null, (_, _) => new AboutForm().ShowDialog());
+        if (_settings.EnableWebSocket)
+        {
+            menu.Items.Add(new ToolStripSeparator());
+            string wsUrl = $"ws://localhost:{_settings.WebSocketPort}/stt/";
+            var wsItem = new ToolStripMenuItem($"WebSocket: {wsUrl}") { Enabled = false };
+            menu.Items.Add(wsItem);
+        }
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Ukončit", null, (_, _) => ExitApplication());
 
