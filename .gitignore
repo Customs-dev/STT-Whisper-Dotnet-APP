@@ -5,3 +5,7 @@ stt.log
 .vs/
 *.user
 *.suo
+
+# Whisper model files (large binaries)
+models/*.bin
+!models/.gitkeep
