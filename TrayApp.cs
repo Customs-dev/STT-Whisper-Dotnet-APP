@@ -651,9 +651,67 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             if (_wsServer is not null)
                 await _wsServer.StopAsync();
 
-            // ApplyUpdatesAndRestart spustí Update.exe, který čeká na ukončení tohoto procesu.
-            // Proto musíme po zavolání okamžitě ukončit proces.
-            _updateManager.ApplyUpdatesAndRestart(newVersion);
+            // Spustíme pomocný skript, který počká na ukončení procesu a uvolnění zámků,
+            // pak ručně nahradí soubory z nupkg a restartuje aplikaci.
+            // Důvod: Velopack Update.exe selhává na PermissionDenied, protože Windows
+            // drží zámky na .NET native DLLs krátce po ukončení procesu.
+            var installDir = Path.GetDirectoryName(Path.GetDirectoryName(Environment.ProcessPath!))!;
+            var currentDir = Path.Combine(installDir, "current");
+            var pkgPath = Path.Combine(installDir, "packages",
+                $"Prompto-{newVersion.TargetFullRelease.Version}-full.nupkg");
+            var exePath = Path.Combine(currentDir, "Prompto.exe");
+
+            WhisperTranscriber.AppLog($"[Update] Launching helper script, pkg={pkgPath}");
+
+            var script = $@"
+                $ErrorActionPreference = 'Stop'
+                $pid = {Environment.ProcessId}
+                $currentDir = '{currentDir.Replace("'", "''")}'
+                $pkgPath = '{pkgPath.Replace("'", "''")}'
+                $exePath = '{exePath.Replace("'", "''")}'
+                $zipPath = $pkgPath -replace '\.nupkg$', '.zip'
+
+                # Počkej na ukončení procesu
+                try {{ $p = Get-Process -Id $pid -ErrorAction Stop; $p.WaitForExit() }} catch {{}}
+
+                # Počkej na uvolnění zámků (Windows drží native DLL handles)
+                Start-Sleep -Seconds 5
+
+                # Zkopíruj nupkg jako zip a rozbal
+                Copy-Item $pkgPath $zipPath -Force
+                $extractDir = Join-Path $env:TEMP 'Prompto_update_extract'
+                if (Test-Path $extractDir) {{ Remove-Item $extractDir -Recurse -Force }}
+                Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+                Remove-Item $zipPath -Force
+
+                # Nahraď obsah current\
+                $srcDir = Join-Path $extractDir 'lib\app'
+                # Zkus až 3× smazat obsah (pro jistotu)
+                for ($i = 0; $i -lt 3; $i++) {{
+                    try {{
+                        Remove-Item ""$currentDir\*"" -Recurse -Force -ErrorAction Stop
+                        break
+                    }} catch {{
+                        Start-Sleep -Seconds 3
+                    }}
+                }}
+                Copy-Item ""$srcDir\*"" $currentDir -Recurse -Force
+
+                # Ukliď
+                Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+
+                # Spusť novou verzi
+                Start-Process $exePath
+            ";
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"{script.Replace("\"", "\\\"")}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            System.Diagnostics.Process.Start(psi);
             Environment.Exit(0);
         }
         catch (Exception ex)
