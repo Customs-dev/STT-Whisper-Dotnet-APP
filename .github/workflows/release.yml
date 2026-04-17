@@ -59,11 +59,19 @@ jobs:
 
       - name: Upload to GitHub Release
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          Write-Host "== velopack-out contents =="
+          Get-ChildItem velopack-out -Recurse | Format-Table Name, Length
+          Write-Host "== uploading to tag ${{ github.ref_name }} =="
           vpk upload github `
             --repoUrl "https://github.com/${{ github.repository }}" `
             --tag "${{ github.ref_name }}" `
             --outputDir velopack-out `
-            --token "${{ secrets.GITHUB_TOKEN }}" `
+            --token $env:GITHUB_TOKEN `
             --publish `
-            --merge
+            --merge 2>&1 | Tee-Object -Variable vpkOut
+          Write-Host "== vpk exit code: $LASTEXITCODE =="
+          Write-Host $vpkOut
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
