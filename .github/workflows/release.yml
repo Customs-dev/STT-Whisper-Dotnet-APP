@@ -65,4 +65,5 @@ jobs:
             --tag "${{ github.ref_name }}" `
             --outputDir velopack-out `
             --token "${{ secrets.GITHUB_TOKEN }}" `
+            --publish `
             --merge
