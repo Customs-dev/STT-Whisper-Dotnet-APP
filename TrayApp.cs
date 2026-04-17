@@ -612,14 +612,20 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 return;
             }
 
+            WhisperTranscriber.AppLog($"[Update] IsInstalled=true, CurrentVersion={_updateManager.CurrentVersion}, AppId={_updateManager.AppId}");
+            WhisperTranscriber.AppLog($"[Update] ExePath={Environment.ProcessPath}");
+
             var newVersion = await _updateManager.CheckForUpdatesAsync();
             if (newVersion is null)
             {
+                WhisperTranscriber.AppLog("[Update] No update available (CheckForUpdatesAsync returned null)");
                 if (userInitiated)
                     _uiContext.Post(_ => ShowBalloon("Prompto – aktualizace",
                         "Máte nejnovější verzi.", ToolTipIcon.Info, 3000), null);
                 return;
             }
+
+            WhisperTranscriber.AppLog($"[Update] Available: {newVersion.TargetFullRelease.Version}, current: {_updateManager.CurrentVersion}");
 
             // Zeptej se uživatele
             var result = MessageBox.Show(
@@ -635,6 +641,20 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 $"Verze {newVersion.TargetFullRelease.Version}", ToolTipIcon.Info, 5000), null);
 
             await _updateManager.DownloadUpdatesAsync(newVersion);
+
+            // Uvolni prostředky, které drží soubory (tray, hotkey, websocket)
+            _uiContext.Post(_ =>
+            {
+                _trayIcon.Visible = false;
+                _hotkey.Unregister();
+            }, null);
+            if (_wsServer is not null)
+                await _wsServer.StopAsync();
+
+            // Krátká pauza, aby se uvolnily soubory a handle
+            await Task.Delay(1000);
+
+            // ApplyUpdatesAndRestart ukončí tento proces a spustí novou verzi
             _updateManager.ApplyUpdatesAndRestart(newVersion);
         }
         catch (Exception ex)
