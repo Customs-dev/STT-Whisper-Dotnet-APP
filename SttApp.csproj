@@ -8,7 +8,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>SttApp</RootNamespace>
     <AssemblyName>Prompto</AssemblyName>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
     <Product>Prompto</Product>
     <AssemblyTitle>Prompto</AssemblyTitle>
     <Description>Prompto – hlasový přepis s Whisper</Description>

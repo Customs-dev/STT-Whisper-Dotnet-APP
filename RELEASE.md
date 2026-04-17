@@ -19,15 +19,15 @@ V souboru `SttApp.csproj` upravte element `<Version>`:
 ```powershell
 cd c:\Users\u023872\Desktop\STT-Whisper-Dotnet-APP\src\SttApp
 git add -A
-git commit -m "Release v1.2.0"
+git commit -m "Release v1.2.1"
 git push origin Implemntation-VeloPack-distribution-model
 ```
 
 ### 3. Vytvořit a pushnout tag
 
 ```powershell
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.2.1
+git push origin v1.2.1
 ```
 
 > Tag musí odpovídat verzi v `.csproj` s prefixem `v`.

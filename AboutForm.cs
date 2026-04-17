@@ -224,7 +224,17 @@ public sealed class AboutForm : Form
 
     private static string GetAppVersion()
     {
-        var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
+        var asm = System.Reflection.Assembly.GetEntryAssembly();
+        var info = asm?.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            is System.Reflection.AssemblyInformationalVersionAttribute[] { Length: > 0 } attrs
+            ? attrs[0].InformationalVersion : null;
+        if (info is not null)
+        {
+            // Remove build metadata (e.g. "+sha.abc123") if present
+            int plus = info.IndexOf('+');
+            return plus > 0 ? info[..plus] : info;
+        }
+        var ver = asm?.GetName().Version;
         return ver is null ? "?" : $"{ver.Major}.{ver.Minor}.{ver.Build}";
     }
 }
