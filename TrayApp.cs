@@ -651,11 +651,10 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             if (_wsServer is not null)
                 await _wsServer.StopAsync();
 
-            // Krátká pauza, aby se uvolnily soubory a handle
-            await Task.Delay(1000);
-
-            // ApplyUpdatesAndRestart ukončí tento proces a spustí novou verzi
+            // ApplyUpdatesAndRestart spustí Update.exe, který čeká na ukončení tohoto procesu.
+            // Proto musíme po zavolání okamžitě ukončit proces.
             _updateManager.ApplyUpdatesAndRestart(newVersion);
+            Environment.Exit(0);
         }
         catch (Exception ex)
         {
