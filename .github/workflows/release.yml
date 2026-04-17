@@ -57,21 +57,29 @@ jobs:
             --icon prompto.ico `
             --exclude "models\*"
 
+      - name: Delete existing draft release (if any)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = "application/vnd.github+json" }
+          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases" -Headers $headers
+          $existing = $releases | Where-Object { $_.tag_name -eq "${{ github.ref_name }}" -and $_.draft -eq $true }
+          if ($existing) {
+            Write-Host "Deleting existing draft release $($existing.id) for tag ${{ github.ref_name }}"
+            Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/${{ github.repository }}/releases/$($existing.id)" -Headers $headers
+          } else {
+            Write-Host "No existing draft release found for tag ${{ github.ref_name }}"
+          }
+
       - name: Upload to GitHub Release
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          Write-Host "== velopack-out contents =="
-          Get-ChildItem velopack-out -Recurse | Format-Table Name, Length
-          Write-Host "== uploading to tag ${{ github.ref_name }} =="
           vpk upload github `
             --repoUrl "https://github.com/${{ github.repository }}" `
             --tag "${{ github.ref_name }}" `
             --outputDir velopack-out `
             --token $env:GITHUB_TOKEN `
-            --publish `
-            --merge 2>&1 | Tee-Object -Variable vpkOut
-          Write-Host "== vpk exit code: $LASTEXITCODE =="
-          Write-Host $vpkOut
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            --publish
