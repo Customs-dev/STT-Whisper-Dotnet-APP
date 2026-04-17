@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
@@ -52,7 +55,7 @@ jobs:
             --mainExe Prompto.exe `
             --outputDir velopack-out `
             --icon prompto.ico `
-            --exclude "models\\*"
+            --exclude "models\*"
 
       - name: Upload to GitHub Release
         shell: pwsh
@@ -61,4 +64,5 @@ jobs:
             --repoUrl "https://github.com/${{ github.repository }}" `
             --tag "${{ github.ref_name }}" `
             --outputDir velopack-out `
-            --token "${{ secrets.GITHUB_TOKEN }}"
+            --token "${{ secrets.GITHUB_TOKEN }}" `
+            --merge
