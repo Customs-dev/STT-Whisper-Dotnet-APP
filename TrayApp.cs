@@ -463,7 +463,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                     WhisperTranscriber.AppLog($"paste hotovo");
                 }
 
-                _uiContext.Post(_ => ShowBalloon("Prompto – přepsáno", preview, ToolTipIcon.Info, 4000), null);
+                _uiContext.Post(_ => ShowBalloon("Prompto – přepsáno", preview + "\n(text je ve schránce – Ctrl+V)", ToolTipIcon.Info, 4000), null);
             }
             catch (OperationCanceledException)
             {

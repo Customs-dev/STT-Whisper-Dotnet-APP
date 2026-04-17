@@ -7,6 +7,7 @@ Prompto je Windows tray aplikace (WinForms, .NET 9) pro speech-to-text přepis p
 - nahrávání přes globální hotkey
 - přepis hlasu do textu přes Whisper (Vulkan + CPU fallback)
 - vložení textu na aktuální kurzor (Notepad, Chrome, Outlook, další Win32 editory)
+- přepsaný text se automaticky ukládá do schránky (clipboard) — lze ho kdykoli vložit znovu přes Ctrl+V
 - volitelný WebSocket server pro stream segmentů
 - volitelný chunked režim přepisu (live stream)
 

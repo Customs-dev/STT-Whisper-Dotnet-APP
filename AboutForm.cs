@@ -80,6 +80,7 @@ public sealed class AboutForm : Form
             "  2.  Mluvte – Prompto nahrává přes mikrofon\n" +
             "  3.  Stiskněte zkratku znovu pro ukončení nahrávání\n" +
             "  4.  AI přepíše řeč na text a vloží ho na aktuální pozici kurzoru\n\n" +
+            "Přepsaný text se automaticky ukládá do schránky (clipboard) – můžete ho kdykoli znovu vložit pomocí Ctrl+V.\n\n" +
             "Klávesová zkratka funguje v libovolné aplikaci – textový editor, e-mail, prohlížeč, chatovací nástroj, VS Code a další.\n\n" +
             "Whisper model běží na GPU (Vulkan) pro rychlý přepis. Při nedostupnosti GPU se automaticky přepne na CPU."
         ));

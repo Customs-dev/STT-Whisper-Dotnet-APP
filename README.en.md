@@ -7,6 +7,7 @@ Prompto is a Windows tray app (WinForms, .NET 9) for speech-to-text transcriptio
 - global hotkey recording
 - Whisper transcription (Vulkan with CPU fallback)
 - text insertion at current cursor location (Notepad, Chrome, Outlook, other Win32 editors)
+- transcribed text is automatically copied to the clipboard — you can paste it again anytime with Ctrl+V
 - optional WebSocket server for live segment streaming
 - optional chunked transcription mode (live stream)
 
