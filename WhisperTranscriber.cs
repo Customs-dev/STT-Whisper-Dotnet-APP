@@ -110,6 +110,20 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
         return result;
     }
 
+    // Whisper halucination filter – krátké fráze kde vyžadujeme exaktní shodu
+    // (aby se neodfiltrovala věta jako "Děkujeme vám za spolupráci na projektu")
+    private static readonly string[] _hallucinationExact =
+    [
+        "děkujeme",
+        "děkuji",
+        "děkuju",
+        "díky",
+        "thank you",
+        "thanks",
+        "na shledanou",
+        "ahoj",
+    ];
+
     // Whisper halucination filter – segmenty ktere Whisper casto vklada do vystupu
     // bez ohledu na obsah audia (titulky, podekování, znacky ticha, apod.)
     private static readonly string[] _hallucinationPatterns =
@@ -137,11 +151,31 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
         "[potlesk]",
         "[applause]",
         "[laughter]",
+        "díky za pozornost",
+        "děkuji za pozornost",
+        "děkujeme za pozornost",
     ];
 
     private static bool IsHallucination(string text)
     {
-        var lower = text.ToLowerInvariant();
+        // Krátké segmenty složené jen z interpunkce/mezer
+        var trimmed = text.Trim(' ', '.', ',', '!', '?', '…', '-', '–');
+        if (trimmed.Length == 0) return true;
+
+        var lower = text.ToLowerInvariant().Trim();
+
+        // Exaktní shoda (celý segment je jen halucinační fráze)
+        var stripped = lower.Trim(' ', '.', ',', '!', '?', '…', '-', '–');
+        foreach (var exact in _hallucinationExact)
+        {
+            if (stripped == exact)
+            {
+                AppLog($"  hallucination filtered (exact): \"{text}\"");
+                return true;
+            }
+        }
+
+        // Obsahová shoda (vzor je součástí segmentu)
         foreach (var pattern in _hallucinationPatterns)
         {
             if (lower.Contains(pattern))
