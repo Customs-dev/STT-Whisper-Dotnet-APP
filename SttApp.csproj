@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>SttApp</RootNamespace>
     <AssemblyName>Prompto</AssemblyName>
+    <Version>1.0.0</Version>
     <Product>Prompto</Product>
     <AssemblyTitle>Prompto</AssemblyTitle>
     <Description>Prompto – hlasový přepis s Whisper</Description>
@@ -28,6 +29,7 @@
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="Velopack" Version="0.0.1015" />
     <PackageReference Include="Whisper.net" Version="1.7.2" />
     <!--
       Vulkan runtime: GPU akcelerace pres Vulkan (RTX 4060 plne podporuje Vulkan 1.3).

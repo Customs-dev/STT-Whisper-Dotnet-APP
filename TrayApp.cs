@@ -4,6 +4,8 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
+using Velopack;
+using Velopack.Sources;
 
 namespace SttApp;
 
@@ -19,6 +21,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
     private ToolStripMenuItem _statusItem = null!;
     private bool _processing;
     private readonly SynchronizationContext _uiContext;
+    private readonly UpdateManager _updateManager;
 
     // HWND aplikace, která měla focus při zahájení nahrávání
     private IntPtr _targetHwnd = IntPtr.Zero;
@@ -49,6 +52,9 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         _recorder = new AudioRecorder();
         _transcriber = new WhisperTranscriber(_settings);
         _hotkey = new HotkeyManager();
+
+        _updateManager = new UpdateManager(
+            new GithubSource("https://github.com/Customs-dev/STT-Whisper-Dotnet-APP", null, false));
 
         _trayIcon = BuildTrayIcon();
 
@@ -92,6 +98,9 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                         $"Zkratka: {key} (1× spustí záznamník, 2× zastaví a spustí přepis)\n" +
                         $"Vložení přepisu na místo kurzoru chvíli trvá.\n" +
                         $"Runtime: {runtime}", ToolTipIcon.Info, 8000);
+
+                    // Ověř aktualizace na pozadí po startu
+                    _ = CheckForUpdatesAsync(userInitiated: false);
                 }, null);
             }
             catch (FileNotFoundException ex)
@@ -117,6 +126,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Nastavení", null, OpenSettings);
+        menu.Items.Add("Zkontrolovat aktualizace", null, (_, _) => _ = CheckForUpdatesAsync(userInitiated: true));
         menu.Items.Add("O aplikaci", null, (_, _) => new AboutForm().ShowDialog());
         if (_settings.EnableWebSocket)
         {
@@ -583,6 +593,56 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 System.Threading.Thread.Sleep(10);
         }
         catch { }
+    }
+
+    // -------------------------------------------------------------------------
+    // Auto-update (Velopack)
+    // -------------------------------------------------------------------------
+
+    private async Task CheckForUpdatesAsync(bool userInitiated)
+    {
+        try
+        {
+            if (!_updateManager.IsInstalled)
+            {
+                if (userInitiated)
+                    _uiContext.Post(_ => ShowBalloon("Prompto – aktualizace",
+                        "Aplikace nebyla nainstalována přes installer.\nAutomatické aktualizace nejsou dostupné.",
+                        ToolTipIcon.Warning, 5000), null);
+                return;
+            }
+
+            var newVersion = await _updateManager.CheckForUpdatesAsync();
+            if (newVersion is null)
+            {
+                if (userInitiated)
+                    _uiContext.Post(_ => ShowBalloon("Prompto – aktualizace",
+                        "Máte nejnovější verzi.", ToolTipIcon.Info, 3000), null);
+                return;
+            }
+
+            // Zeptej se uživatele
+            var result = MessageBox.Show(
+                $"Je dostupná nová verze Prompto {newVersion.TargetFullRelease.Version}.\n\n" +
+                $"Chcete ji stáhnout a nainstalovat?\nAplikace se po aktualizaci restartuje.",
+                "Prompto – aktualizace",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
+
+            if (result != DialogResult.Yes) return;
+
+            _uiContext.Post(_ => ShowBalloon("Prompto – stahuji aktualizaci…",
+                $"Verze {newVersion.TargetFullRelease.Version}", ToolTipIcon.Info, 5000), null);
+
+            await _updateManager.DownloadUpdatesAsync(newVersion);
+            _updateManager.ApplyUpdatesAndRestart(newVersion);
+        }
+        catch (Exception ex)
+        {
+            if (userInitiated)
+                _uiContext.Post(_ => ShowBalloon("Prompto – chyba aktualizace",
+                    ex.Message, ToolTipIcon.Error, 5000), null);
+        }
     }
 
     private void ExitApplication()

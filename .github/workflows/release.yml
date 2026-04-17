@@ -1,0 +1,64 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag -replace '^v', ''
+          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Publish application
+        shell: pwsh
+        run: |
+          dotnet publish SttApp.csproj -c Release -r win-x64 --self-contained true -o bin/publish
+
+      - name: Create models placeholder
+        shell: pwsh
+        run: |
+          $dir = "bin/publish/models"
+          if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+          "" | Set-Content "$dir/.gitkeep"
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk
+
+      - name: Pack with Velopack
+        shell: pwsh
+        run: |
+          vpk pack `
+            --packId Prompto `
+            --packVersion ${{ steps.version.outputs.VERSION }} `
+            --packDir bin/publish `
+            --mainExe Prompto.exe `
+            --outputDir velopack-out `
+            --icon prompto.ico `
+            --exclude "models\\*"
+
+      - name: Upload to GitHub Release
+        shell: pwsh
+        run: |
+          vpk upload github `
+            --repoUrl "https://github.com/${{ github.repository }}" `
+            --tag "${{ github.ref_name }}" `
+            --outputDir velopack-out `
+            --token "${{ secrets.GITHUB_TOKEN }}"

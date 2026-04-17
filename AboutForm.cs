@@ -45,7 +45,7 @@ public sealed class AboutForm : Form
             AutoSize = true, Location = new Point(20, 10)
         });
         header.Controls.Add(new Label {
-            Text = "Hlasový přepis s AI  ·  verze 1.0",
+            Text = $"Hlasový přepis s AI  ·  verze {GetAppVersion()}",
             ForeColor = Color.FromArgb(180, 210, 255),
             Font = new Font("Segoe UI", 9f), AutoSize = true, Location = new Point(22, 62)
         });
@@ -220,5 +220,11 @@ public sealed class AboutForm : Form
     private static void OpenUrl(string url)
     {
         try { System.Diagnostics.Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+    }
+
+    private static string GetAppVersion()
+    {
+        var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
+        return ver is null ? "?" : $"{ver.Major}.{ver.Minor}.{ver.Build}";
     }
 }
