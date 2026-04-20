@@ -50,6 +50,10 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                      ?? new WindowsFormsSynchronizationContext();
 
         _settings = AppSettings.Load();
+
+        // Migrace modelů z current\models\ do %LOCALAPPDATA%\Prompto\models\
+        Program.MigrateModelsIfNeeded();
+
         _recorder = new AudioRecorder();
         _transcriber = new WhisperTranscriber(_settings);
         _hotkey = new HotkeyManager();

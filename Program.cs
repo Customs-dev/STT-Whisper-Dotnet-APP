@@ -21,13 +21,43 @@ internal static class Program
         Application.Run(trayApp);
     }
 
+    /// <summary>
+    /// Persistentní složka pro modely – přežije aktualizace aplikace.
+    /// %LOCALAPPDATA%\Prompto\models
+    /// </summary>
+    internal static readonly string PersistentModelsDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Prompto", "models");
+
+    /// <summary>
+    /// Migrace: přesune modely z current\models\ do persistentní složky,
+    /// aby přežily Velopack aktualizace.
+    /// </summary>
+    internal static void MigrateModelsIfNeeded()
+    {
+        var oldModelsDir = Path.Combine(AppContext.BaseDirectory, "models");
+        if (!Directory.Exists(oldModelsDir)) return;
+
+        Directory.CreateDirectory(PersistentModelsDir);
+
+        foreach (var srcFile in Directory.GetFiles(oldModelsDir, "*.bin"))
+        {
+            var destFile = Path.Combine(PersistentModelsDir, Path.GetFileName(srcFile));
+            if (!File.Exists(destFile))
+            {
+                try { File.Move(srcFile, destFile); }
+                catch { /* soubor může být zamčený – přeskočíme */ }
+            }
+        }
+    }
+
     private static void ShowPostInstallInfo()
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
         var installDir = AppContext.BaseDirectory;
-        var modelsDir = Path.Combine(installDir, "models");
+        var modelsDir = PersistentModelsDir;
         Directory.CreateDirectory(modelsDir);
 
         var message =

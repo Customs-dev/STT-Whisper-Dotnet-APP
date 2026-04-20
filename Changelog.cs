@@ -8,6 +8,12 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new List<ChangelogEntry>
     {
+        new("1.3.3", "Modely přežijí aktualizaci", new[]
+        {
+            "Whisper modely se nyní ukládají do %LOCALAPPDATA%\\Prompto\\models\\ – přežijí aktualizace aplikace",
+            "Automatická migrace: existující modely z current\\models\\ se přesunou při spuštění",
+            "Aktualizovaná chybová hláška s cestou k persistentní složce modelů",
+        }),
         new("1.3.2", "Push-to-Talk režim", new[]
         {
             "Nový režim nahrávání Push-to-Talk – drž klávesovou zkratku pro nahrávání, pusť pro přepis",

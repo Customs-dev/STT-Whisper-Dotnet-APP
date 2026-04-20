@@ -48,7 +48,7 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
             throw new FileNotFoundException(
                 $"Whisper model nenalezen. Hledáno v:\n" +
                 $"  {modelPath}\n" +
-                "Zkopírujte model do složky models/ vedle EXE souboru.", modelPath);
+                $"Zkopírujte model do složky:\n  {Program.PersistentModelsDir}", modelPath);
 
         Log($"Model nalezen, velikost: {new FileInfo(modelPath).Length / (1024 * 1024)} MB");
 
@@ -203,8 +203,9 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
     /// <summary>
     /// Hleda model v tomto poradi:
     /// 1. Absolutni cesta (pokud je zadana)
-    /// 2. Relativne k AppContext.BaseDirectory (vydany EXE)
-    /// 3. Relativne k aktualni pracovni slozce (dotnet run / vyvoj)
+    /// 2. Persistentni slozka %LOCALAPPDATA%\Prompto\models (prezije update)
+    /// 3. Relativne k AppContext.BaseDirectory (vydany EXE – current\)
+    /// 4. Relativne k aktualni pracovni slozce (dotnet run / vyvoj)
     /// Vraci prvni nalezenou cestu, jinak cestu z bodu 2.
     /// </summary>
     private static string ResolveModelPath(string configuredPath)
@@ -212,8 +213,13 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
         if (Path.IsPathRooted(configuredPath))
             return configuredPath;
 
+        var persistentModelsDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Prompto", "models");
+
         var candidates = new[]
         {
+            Path.Combine(persistentModelsDir, Path.GetFileName(configuredPath)),
             Path.Combine(AppContext.BaseDirectory, configuredPath),
             Path.Combine(Directory.GetCurrentDirectory(), configuredPath),
         };
@@ -224,7 +230,7 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
                 return candidate;
         }
 
-        // Vrat cestu relativne k BaseDirectory (pro chybovou hlasku)
+        // Vrat cestu k persistentni slozce (pro chybovou hlasku)
         return candidates[0];
     }
 }
