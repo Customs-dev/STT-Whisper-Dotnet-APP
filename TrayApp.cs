@@ -690,8 +690,6 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             // Uvolni VŠECHNY prostředky, které drží soubory v adresáři current\.
             // Zejména WhisperTranscriber drží nativní DLL (whisper.dll),
             // a AudioRecorder drží NAudio DLL.
-            // Pokud se neuvolní PŘED spuštěním Update.exe, Windows drží zámky
-            // a Velopack nemůže přejmenovat current\ adresář → PermissionDenied.
             _uiContext.Post(_ =>
             {
                 _trayIcon.Visible = false;
@@ -710,9 +708,45 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            WhisperTranscriber.AppLog("[Update] Resources disposed, applying update via Velopack...");
+            // Spustíme Update.exe PŘES PowerShell helper, který počká dostatečně
+            // dlouho na uvolnění všech file-handlů (antivirus, .NET memory mapping).
+            // NEVOLÁME ApplyUpdatesAndRestart – to by spustilo Update.exe OKAMŽITĚ
+            // (bez dostatečné pauzy) a navíc VelopackApp ProcessExit hook by mohl
+            // spustit DRUHÝ Update.exe → souboj o zámky → PermissionDenied.
+            var installDir = Path.GetDirectoryName(Path.GetDirectoryName(Environment.ProcessPath!))!;
+            var updateExe = Path.Combine(installDir, "Update.exe");
+            var pkgPath = Path.Combine(installDir, "packages",
+                $"Prompto-{newVersion.TargetFullRelease.Version}-full.nupkg");
 
-            _updateManager.ApplyUpdatesAndRestart(newVersion);
+            WhisperTranscriber.AppLog($"[Update] Launching delayed helper, pkg={pkgPath}");
+
+            var script = $@"
+$pid = {Environment.ProcessId}
+$updateExe = '{updateExe.Replace("'", "''")}'
+$pkgPath = '{pkgPath.Replace("'", "''")}'
+
+# Počkej na ukončení procesu
+try {{ $p = Get-Process -Id $pid -ErrorAction Stop; $p.WaitForExit() }} catch {{}}
+
+# Počkej na ÚPLNÉ uvolnění file-handlů (antivirus, .NET runtime mapping)
+Start-Sleep -Seconds 20
+
+# Spusť Velopack Update.exe – standardní apply s restartem
+& $updateExe apply --package $pkgPath 2>&1 | Out-File (Join-Path $env:LOCALAPPDATA 'Prompto\update-helper.log') -Append
+";
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"{script.Replace("\"", "\\\"")}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            System.Diagnostics.Process.Start(psi);
+
+            // Ukončíme aplikaci ČISTĚ přes Application.Exit (ne Environment.Exit)
+            // aby se provedly všechny WinForms cleanup handlery.
+            _uiContext.Post(_ => Application.Exit(), null);
         }
         catch (Exception ex)
         {

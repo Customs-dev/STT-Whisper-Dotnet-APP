@@ -8,6 +8,12 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new List<ChangelogEntry>
     {
+        new("1.2.9", "Oprava aktualizací (v2)", new[]
+        {
+            "Vyřešen přetrvávající problém PermissionDenied při updatu",
+            "Update.exe se nyní spouští až 20 sekund po ukončení aplikace (dostatek času pro uvolnění file-handlů)",
+            "Zabráněno souběžnému spuštění více instancí Update.exe",
+        }),
         new("1.2.8", "Novinky po aktualizaci", new[]
         {
             "Nová obrazovka \"Co je nového\" – zobrazí se automaticky po aktualizaci na novou verzi",
