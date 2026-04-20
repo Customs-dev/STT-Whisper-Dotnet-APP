@@ -100,6 +100,9 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                         $"Vložení přepisu na místo kurzoru chvíli trvá.\n" +
                         $"Runtime: {runtime}", ToolTipIcon.Info, 8000);
 
+                    // Zobraz novinky po aktualizaci
+                    ShowWhatsNewIfNeeded();
+
                     // Ověř aktualizace na pozadí po startu
                     _ = CheckForUpdatesAsync(userInitiated: false);
                 }, null);
@@ -130,6 +133,8 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         menu.Items.Add("Historie přepisů", null, (_, _) => new HistoryForm(_history).ShowDialog());
         menu.Items.Add("Zkontrolovat aktualizace", null, (_, _) => _ = CheckForUpdatesAsync(userInitiated: true));
         menu.Items.Add("O aplikaci", null, (_, _) => new AboutForm().ShowDialog());
+        menu.Items.Add("Co je nového", null, (_, _) =>
+            new WhatsNewForm(GetAppVersion(), null).ShowDialog());
         if (_settings.EnableWebSocket)
         {
             menu.Items.Add(new ToolStripSeparator());
@@ -565,6 +570,34 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         _settings.Save();
         _hotkey.Unregister();
         RegisterHotkey();
+    }
+
+    private void ShowWhatsNewIfNeeded()
+    {
+        var version = GetAppVersion();
+        if (!WhatsNewForm.ShouldShow(version))
+            return;
+
+        var lastSeen = WhatsNewForm.GetLastSeenVersion();
+        WhatsNewForm.MarkAsSeen(version);
+
+        var form = new WhatsNewForm(version, lastSeen);
+        form.ShowDialog();
+    }
+
+    private static string GetAppVersion()
+    {
+        var asm = System.Reflection.Assembly.GetEntryAssembly();
+        var info = asm?.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            is System.Reflection.AssemblyInformationalVersionAttribute[] { Length: > 0 } attrs
+            ? attrs[0].InformationalVersion : null;
+        if (info is not null)
+        {
+            int plus = info.IndexOf('+');
+            return plus > 0 ? info[..plus] : info;
+        }
+        var ver = asm?.GetName().Version;
+        return ver is null ? "?" : $"{ver.Major}.{ver.Minor}.{ver.Build}";
     }
 
     // -------------------------------------------------------------------------
