@@ -8,6 +8,12 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new List<ChangelogEntry>
     {
+        new("1.3.0", "Spolehlivá aktualizace", new[]
+        {
+            "Zcela přepracovaný mechanismus aktualizace – obchází problém Windows se zámkem na adresáři",
+            "Update nyní nahrazuje obsah souborů uvnitř instalačního adresáře (místo přejmenování celého adresáře)",
+            "Detailní logovací soubor update-helper.log pro diagnostiku",
+        }),
         new("1.2.9", "Oprava aktualizací (v2)", new[]
         {
             "Vyřešen přetrvávající problém PermissionDenied při updatu",

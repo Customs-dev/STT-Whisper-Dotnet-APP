@@ -708,31 +708,82 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            // Spustíme Update.exe PŘES PowerShell helper, který počká dostatečně
-            // dlouho na uvolnění všech file-handlů (antivirus, .NET memory mapping).
-            // NEVOLÁME ApplyUpdatesAndRestart – to by spustilo Update.exe OKAMŽITĚ
-            // (bez dostatečné pauzy) a navíc VelopackApp ProcessExit hook by mohl
-            // spustit DRUHÝ Update.exe → souboj o zámky → PermissionDenied.
+            // Spustíme PowerShell helper, který ručně nahradí OBSAH adresáře current\.
+            // NEPOUŽÍVÁME Update.exe, protože ten se pokouší PŘEJMENOVAT celý adresář
+            // current\ → záloha, a to selhává s PermissionDenied (Windows drží handle
+            // na adresáři, přestože žádný soubor uvnitř není zamčený).
+            // Místo toho: smažeme obsah uvnitř current\ a nakopírujeme nové soubory z nupkg.
             var installDir = Path.GetDirectoryName(Path.GetDirectoryName(Environment.ProcessPath!))!;
-            var updateExe = Path.Combine(installDir, "Update.exe");
+            var currentDir = Path.Combine(installDir, "current");
             var pkgPath = Path.Combine(installDir, "packages",
                 $"Prompto-{newVersion.TargetFullRelease.Version}-full.nupkg");
+            var exePath = Path.Combine(currentDir, "Prompto.exe");
 
-            WhisperTranscriber.AppLog($"[Update] Launching delayed helper, pkg={pkgPath}");
+            // Přesuneme nupkg do temp, aby VelopackApp ProcessExit hook nemohl
+            // spustit Update.exe (ten hledá nupkg v packages/ – když tam nebude,
+            // hook nic neudělá a nedojde k souběhu s naším PowerShell skriptem).
+            var tempPkgDir = Path.Combine(Path.GetTempPath(), "Prompto_update_pkg");
+            Directory.CreateDirectory(tempPkgDir);
+            var tempPkgPath = Path.Combine(tempPkgDir,
+                $"Prompto-{newVersion.TargetFullRelease.Version}-full.nupkg");
+            if (File.Exists(tempPkgPath)) File.Delete(tempPkgPath);
+            File.Move(pkgPath, tempPkgPath);
+
+            WhisperTranscriber.AppLog($"[Update] Moved pkg to {tempPkgPath}, launching helper");
 
             var script = $@"
-$pid = {Environment.ProcessId}
-$updateExe = '{updateExe.Replace("'", "''")}'
-$pkgPath = '{pkgPath.Replace("'", "''")}'
+$ErrorActionPreference = 'Stop'
+$logFile = Join-Path $env:LOCALAPPDATA 'Prompto\update-helper.log'
+function Log($msg) {{ ""$(Get-Date -f 'HH:mm:ss') $msg"" | Out-File $logFile -Append }}
 
-# Počkej na ukončení procesu
+$pid = {Environment.ProcessId}
+$currentDir = '{currentDir.Replace("'", "''")}'
+$pkgPath = '{tempPkgPath.Replace("'", "''")}'
+$exePath = '{exePath.Replace("'", "''")}'
+
+Log 'Waiting for process exit...'
 try {{ $p = Get-Process -Id $pid -ErrorAction Stop; $p.WaitForExit() }} catch {{}}
 
-# Počkej na ÚPLNÉ uvolnění file-handlů (antivirus, .NET runtime mapping)
-Start-Sleep -Seconds 20
+Log 'Process exited, waiting 10s for handle release...'
+Start-Sleep -Seconds 10
 
-# Spusť Velopack Update.exe – standardní apply s restartem
-& $updateExe apply --package $pkgPath 2>&1 | Out-File (Join-Path $env:LOCALAPPDATA 'Prompto\update-helper.log') -Append
+# Zkopíruj nupkg jako zip a rozbal do temp adresáře
+$zipPath = $pkgPath -replace '\.nupkg$', '.zip'
+Copy-Item $pkgPath $zipPath -Force
+$extractDir = Join-Path $env:TEMP 'Prompto_update_extract'
+if (Test-Path $extractDir) {{ Remove-Item $extractDir -Recurse -Force }}
+Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+Remove-Item $zipPath -Force
+
+$srcDir = Join-Path $extractDir 'lib\app'
+if (-not (Test-Path $srcDir)) {{
+    Log ""ERROR: lib\app not found in nupkg. Contents: $(Get-ChildItem $extractDir -Recurse -Name | Select-Object -First 20)""
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    exit 1
+}}
+
+Log 'Removing old files from current\...'
+# Smaž obsah current\ (ne adresář samotný – ten nelze přejmenovat/smazat)
+for ($i = 0; $i -lt 5; $i++) {{
+    try {{
+        Get-ChildItem $currentDir -Force | Remove-Item -Recurse -Force -ErrorAction Stop
+        Log 'Old files removed successfully'
+        break
+    }} catch {{
+        Log ""Retry $i removing files: $_""
+        Start-Sleep -Seconds 5
+    }}
+}}
+
+Log 'Copying new files...'
+Copy-Item ""$srcDir\*"" $currentDir -Recurse -Force
+
+# Ukliď temp
+Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+
+Log 'Starting new version...'
+Start-Process $exePath
+Log 'Update complete!'
 ";
 
             var psi = new System.Diagnostics.ProcessStartInfo
