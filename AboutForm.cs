@@ -25,14 +25,14 @@ public sealed class AboutForm : Form
         BackColor       = ColBg;
         Font            = new Font("Segoe UI", 9.5f);
         AutoScaleMode   = AutoScaleMode.Font;
-        ClientSize      = new Size(680, 900);
+        ClientSize      = new Size(700, 900);
 
         BuildLayout();
 
         // Po sestavení layoutu nastav výšku na max. dostupnou výšku obrazovky
         // (ScrollableControl zajišťuje scrollování pokud je obsah vyšší)
         int maxH = Screen.FromControl(this).WorkingArea.Height - 60;
-        ClientSize = new Size(ClientSize.Width, Math.Min(1200, maxH));
+        ClientSize = new Size(ClientSize.Width, Math.Min(1300, maxH));
     }
 
     private void BuildLayout()
@@ -66,7 +66,7 @@ public sealed class AboutForm : Form
             AutoSizeMode  = AutoSizeMode.GrowAndShrink,
             BackColor     = ColBg,
             Padding       = new Padding(24, 16, 24, 20),
-            Width         = 680,
+            Width         = 700,
         };
         scroll.Controls.Add(body);
 
