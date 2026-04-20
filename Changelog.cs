@@ -8,11 +8,19 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new List<ChangelogEntry>
     {
+        new("1.3.1", "Oprava aktualizace (v3)", new[]
+        {
+            "Update nejprve vyprázdní current\\ a poté spustí Update.exe apply (prázdný adresář jde přejmenovat)",
+            "Fallback: pokud Update.exe selže, soubory se zkopírují ručně z nupkg",
+            "Skript pre-reinstall.bat pro přípravu ruční reinstalace přes Setup.exe",
+        }),
         new("1.3.0", "Spolehlivá aktualizace", new[]
         {
             "Zcela přepracovaný mechanismus aktualizace – obchází problém Windows se zámkem na adresáři",
-            "Update nyní nahrazuje obsah souborů uvnitř instalačního adresáře (místo přejmenování celého adresáře)",
+            "Update nejprve vyprázdní current\\ a poté spustí Update.exe apply (prázdný adresář jde přejmenovat)",
+            "Fallback: pokud Update.exe selže, soubory se zkopírují ručně z nupkg",
             "Detailní logovací soubor update-helper.log pro diagnostiku",
+            "Skript pre-reinstall.bat pro přípravu ruční reinstalace přes Setup.exe",
         }),
         new("1.2.9", "Oprava aktualizací (v2)", new[]
         {

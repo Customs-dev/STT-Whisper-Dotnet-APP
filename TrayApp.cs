@@ -708,20 +708,23 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            // Spustíme PowerShell helper, který ručně nahradí OBSAH adresáře current\.
-            // NEPOUŽÍVÁME Update.exe, protože ten se pokouší PŘEJMENOVAT celý adresář
-            // current\ → záloha, a to selhává s PermissionDenied (Windows drží handle
-            // na adresáři, přestože žádný soubor uvnitř není zamčený).
-            // Místo toho: smažeme obsah uvnitř current\ a nakopírujeme nové soubory z nupkg.
+            // Postup aktualizace:
+            // 1. Vyprázdníme current\ (smažeme soubory a podadresáře uvnitř)
+            //    – Windows neumí přejmenovat neprázdný adresář, protože pozadí procesy
+            //      (Defender, indexer, shell) drží file-level handly.
+            //    – PRÁZDNÝ adresář přejmenovat JDE.
+            // 2. Spustíme Update.exe apply -p <nupkg> – Velopack nyní úspěšně
+            //    přejmenuje prázdný current\ → záloha, rozbalí nupkg do nového current\
+            //    a uklidí zálohu. Tím se zachová veškerá Velopack metadata/shortcuts.
             var installDir = Path.GetDirectoryName(Path.GetDirectoryName(Environment.ProcessPath!))!;
             var currentDir = Path.Combine(installDir, "current");
+            var updateExe = Path.Combine(installDir, "Update.exe");
             var pkgPath = Path.Combine(installDir, "packages",
                 $"Prompto-{newVersion.TargetFullRelease.Version}-full.nupkg");
             var exePath = Path.Combine(currentDir, "Prompto.exe");
 
             // Přesuneme nupkg do temp, aby VelopackApp ProcessExit hook nemohl
-            // spustit Update.exe (ten hledá nupkg v packages/ – když tam nebude,
-            // hook nic neudělá a nedojde k souběhu s naším PowerShell skriptem).
+            // spustit Update.exe souběžně s naším PowerShell skriptem.
             var tempPkgDir = Path.Combine(Path.GetTempPath(), "Prompto_update_pkg");
             Directory.CreateDirectory(tempPkgDir);
             var tempPkgPath = Path.Combine(tempPkgDir,
@@ -736,50 +739,74 @@ $ErrorActionPreference = 'Stop'
 $logFile = Join-Path $env:LOCALAPPDATA 'Prompto\update-helper.log'
 function Log($msg) {{ ""$(Get-Date -f 'HH:mm:ss') $msg"" | Out-File $logFile -Append }}
 
-$pid = {Environment.ProcessId}
+$myPid = {Environment.ProcessId}
 $currentDir = '{currentDir.Replace("'", "''")}'
 $pkgPath = '{tempPkgPath.Replace("'", "''")}'
+$updateExe = '{updateExe.Replace("'", "''")}'
 $exePath = '{exePath.Replace("'", "''")}'
 
 Log 'Waiting for process exit...'
-try {{ $p = Get-Process -Id $pid -ErrorAction Stop; $p.WaitForExit() }} catch {{}}
+try {{ $p = Get-Process -Id $myPid -ErrorAction Stop; $p.WaitForExit() }} catch {{}}
 
 Log 'Process exited, waiting 10s for handle release...'
 Start-Sleep -Seconds 10
 
-# Zkopíruj nupkg jako zip a rozbal do temp adresáře
-$zipPath = $pkgPath -replace '\.nupkg$', '.zip'
-Copy-Item $pkgPath $zipPath -Force
-$extractDir = Join-Path $env:TEMP 'Prompto_update_extract'
-if (Test-Path $extractDir) {{ Remove-Item $extractDir -Recurse -Force }}
-Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-Remove-Item $zipPath -Force
-
-$srcDir = Join-Path $extractDir 'lib\app'
-if (-not (Test-Path $srcDir)) {{
-    Log ""ERROR: lib\app not found in nupkg. Contents: $(Get-ChildItem $extractDir -Recurse -Name | Select-Object -First 20)""
-    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    exit 1
-}}
-
-Log 'Removing old files from current\...'
-# Smaž obsah current\ (ne adresář samotný – ten nelze přejmenovat/smazat)
+# 1. Vyprázdni current\ (soubory + podadresáře, ne samotný adresář)
+Log 'Emptying current\ directory...'
 for ($i = 0; $i -lt 5; $i++) {{
     try {{
         Get-ChildItem $currentDir -Force | Remove-Item -Recurse -Force -ErrorAction Stop
-        Log 'Old files removed successfully'
+        Log 'current\ emptied successfully'
         break
     }} catch {{
-        Log ""Retry $i removing files: $_""
+        Log ""Retry $i emptying current\: $_""
         Start-Sleep -Seconds 5
     }}
 }}
 
-Log 'Copying new files...'
-Copy-Item ""$srcDir\*"" $currentDir -Recurse -Force
+$remaining = (Get-ChildItem $currentDir -Force | Measure-Object).Count
+if ($remaining -gt 0) {{
+    Log ""ERROR: could not empty current\ ($remaining items remain)""
+    # Fallback: alespoň zkopírujeme soubory přes existující
+    Log 'Falling back to overwrite extraction...'
+    $zipPath = $pkgPath -replace '\.nupkg$', '.zip'
+    Copy-Item $pkgPath $zipPath -Force
+    $extractDir = Join-Path $env:TEMP 'Prompto_update_extract'
+    if (Test-Path $extractDir) {{ Remove-Item $extractDir -Recurse -Force }}
+    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+    Remove-Item $zipPath -Force
+    $srcDir = Join-Path $extractDir 'lib\app'
+    if (Test-Path $srcDir) {{ Copy-Item ""$srcDir\*"" $currentDir -Recurse -Force }}
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    Log 'Fallback copy done, starting app...'
+    Start-Process $exePath
+    Log 'Update complete (fallback)!'
+    exit 0
+}}
 
-# Ukliď temp
-Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+# 2. Spusť Update.exe apply – prázdný current\ jde přejmenovat
+Log 'Running Update.exe apply...'
+try {{
+    $proc = Start-Process -FilePath $updateExe -ArgumentList 'apply', '--norestart', '-p', $pkgPath `
+        -Wait -PassThru -NoNewWindow -RedirectStandardError (Join-Path $env:TEMP 'prompto_update_stderr.txt')
+    Log ""Update.exe exited with code $($proc.ExitCode)""
+    if ($proc.ExitCode -ne 0) {{ throw ""Update.exe failed with exit code $($proc.ExitCode)"" }}
+}} catch {{
+    Log ""Update.exe failed: $_. Falling back to manual extraction...""
+    # Fallback: ruční extrakce nupkg
+    $zipPath = $pkgPath -replace '\.nupkg$', '.zip'
+    Copy-Item $pkgPath $zipPath -Force
+    $extractDir = Join-Path $env:TEMP 'Prompto_update_extract'
+    if (Test-Path $extractDir) {{ Remove-Item $extractDir -Recurse -Force }}
+    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+    Remove-Item $zipPath -Force
+    $srcDir = Join-Path $extractDir 'lib\app'
+    if (Test-Path $srcDir) {{ Copy-Item ""$srcDir\*"" $currentDir -Recurse -Force }}
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+}}
+
+# Ukliď temp nupkg
+Remove-Item $pkgPath -Force -ErrorAction SilentlyContinue
 
 Log 'Starting new version...'
 Start-Process $exePath
