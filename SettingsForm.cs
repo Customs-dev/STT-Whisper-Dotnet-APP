@@ -17,6 +17,7 @@ public sealed class SettingsForm : Form
     private readonly CheckBox    _chkWs;
     private readonly TextBox     _tbWsPort;
     private readonly TextBox     _tbChunkSeconds;
+    private readonly CheckBox    _chkClipboard;
     private bool                 _capturingHotkey;
 
     public SettingsForm(AppSettings settings)
@@ -31,7 +32,7 @@ public sealed class SettingsForm : Form
         BackColor       = ColBg;
         Font            = new Font("Segoe UI", 9.5f);
         AutoScaleMode   = AutoScaleMode.Font;
-        ClientSize      = new Size(500, 640);
+        ClientSize      = new Size(500, 820);
 
         // TABLE – důležité: Fill se musí přidat PŘED Top
         var tbl = new TableLayoutPanel {
@@ -93,11 +94,12 @@ public sealed class SettingsForm : Form
             row++;
             if (note != null) {
                 var noteLbl = new Label {
-                    Text = note, AutoSize = false, Dock = DockStyle.Fill,
+                    Text = note, AutoSize = true,
+                    MaximumSize = new Size(320, 0),
                     ForeColor = ColSub, Font = new Font("Segoe UI", 8f),
                     Margin = new Padding(0, 0, 0, 6),
                 };
-                tbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+                tbl.RowStyles.Add(new RowStyle(SizeType.AutoSize));
                 tbl.Controls.Add(noteLbl, 1, row);
                 row++;
             }
@@ -135,6 +137,11 @@ public sealed class SettingsForm : Form
         _tbLanguage = new TextBox { Text = _settings.Language, BackColor = Color.White };
         _tbLanguage.TextChanged += (_, _) => _settings.Language = _tbLanguage.Text.Trim();
         AddRow("Jazyk:", _tbLanguage, "Např. cs, en, de, sk");
+
+        // SCHRÁNKA
+        AddSep("Schránka");
+        _chkClipboard = new CheckBox { Text = "Kopírovat přepis do schránky", Checked = _settings.CopyToClipboard };
+        AddRow("", _chkClipboard, "Přepsaný text se automaticky uloží do schránky (Ctrl+V)");
 
         // WEBSOCKET SERVER
         AddSep("WebSocket server");
@@ -230,6 +237,7 @@ public sealed class SettingsForm : Form
         if (int.TryParse(_tbWsPort.Text, out var p)) _settings.WebSocketPort = p;
         if (int.TryParse(_tbChunkSeconds.Text, out var c)) _settings.ChunkIntervalSeconds = Math.Max(0, c);
         _settings.EnableWebSocket = _chkWs.Checked;
+        _settings.CopyToClipboard = _chkClipboard.Checked;
         _settings.Language        = _tbLanguage.Text.Trim();
         _settings.ModelPath       = _tbModelPath.Text.Trim();
     }

@@ -22,6 +22,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
     private bool _processing;
     private readonly SynchronizationContext _uiContext;
     private readonly UpdateManager _updateManager;
+    private readonly TranscriptionHistory _history = new();
 
     // HWND aplikace, která měla focus při zahájení nahrávání
     private IntPtr _targetHwnd = IntPtr.Zero;
@@ -126,6 +127,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Nastavení", null, OpenSettings);
+        menu.Items.Add("Historie přepisů", null, (_, _) => new HistoryForm(_history).ShowDialog());
         menu.Items.Add("Zkontrolovat aktualizace", null, (_, _) => _ = CheckForUpdatesAsync(userInitiated: true));
         menu.Items.Add("O aplikaci", null, (_, _) => new AboutForm().ShowDialog());
         if (_settings.EnableWebSocket)
@@ -458,12 +460,22 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 else
                 {
                     // Paste před ballooněm – balloon může krátce krást focus
-                    WhisperTranscriber.AppLog($"paste start, hwnd={hwnd:X} childHint={childHint:X}, celkem {fullText.Length} znaků (chunky: {accumulated.Length}, finální: {text.Length})");
-                    await TextInjector.PasteViaClipboardAsync(fullText, hwnd, childHint);
-                    WhisperTranscriber.AppLog($"paste hotovo");
+                    if (_settings.CopyToClipboard)
+                    {
+                        WhisperTranscriber.AppLog($"paste start, hwnd={hwnd:X} childHint={childHint:X}, celkem {fullText.Length} znaků (chunky: {accumulated.Length}, finální: {text.Length})");
+                        await TextInjector.PasteViaClipboardAsync(fullText, hwnd, childHint);
+                        WhisperTranscriber.AppLog($"paste hotovo");
+                    }
+                    else
+                    {
+                        WhisperTranscriber.AppLog($"clipboard přeskočen (vypnuto v nastavení), celkem {fullText.Length} znaků");
+                    }
                 }
 
-                _uiContext.Post(_ => ShowBalloon("Prompto – přepsáno", preview + "\n(text je ve schránce – Ctrl+V)", ToolTipIcon.Info, 4000), null);
+                _history.Add(fullText, sw.Elapsed.TotalSeconds, _settings.Language);
+
+                string balloonSuffix = _settings.CopyToClipboard ? "\n(text je ve schránce – Ctrl+V)" : "";
+                _uiContext.Post(_ => ShowBalloon("Prompto – přepsáno", preview + balloonSuffix, ToolTipIcon.Info, 4000), null);
             }
             catch (OperationCanceledException)
             {

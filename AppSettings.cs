@@ -33,6 +33,9 @@ public sealed class AppSettings
     public bool EnableWebSocket { get; set; } = false;
     public int WebSocketPort { get; set; } = 5050;
 
+    // Clipboard – automaticky kopírovat přepis do schránky
+    public bool CopyToClipboard { get; set; } = true;
+
     // Live streaming – délka audio chunku v sekundách (0 = vypnuto, použij batch mode)
     public int ChunkIntervalSeconds { get; set; } = 8;
 
