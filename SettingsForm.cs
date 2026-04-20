@@ -18,6 +18,7 @@ public sealed class SettingsForm : Form
     private readonly TextBox     _tbWsPort;
     private readonly TextBox     _tbChunkSeconds;
     private readonly CheckBox    _chkClipboard;
+    private readonly ComboBox    _cmbRecordingMode;
     private bool                 _capturingHotkey;
 
     public SettingsForm(AppSettings settings)
@@ -32,7 +33,7 @@ public sealed class SettingsForm : Form
         BackColor       = ColBg;
         Font            = new Font("Segoe UI", 9.5f);
         AutoScaleMode   = AutoScaleMode.Font;
-        ClientSize      = new Size(500, 820);
+        ClientSize      = new Size(500, 890);
 
         // TABLE – důležité: Fill se musí přidat PŘED Top
         var tbl = new TableLayoutPanel {
@@ -127,6 +128,14 @@ public sealed class SettingsForm : Form
             }
         };
         AddRow("Klávesová zkratka:", _tbHotkey, "Klikněte a stiskněte kombinaci kláves");
+
+        _cmbRecordingMode = new ComboBox {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            BackColor = Color.White,
+        };
+        _cmbRecordingMode.Items.AddRange(new object[] { "Toggle (1× start, 2× stop)", "Push-to-Talk (drž = nahrávej)" });
+        _cmbRecordingMode.SelectedIndex = _settings.RecordingMode == RecordingMode.PushToTalk ? 1 : 0;
+        AddRow("Režim nahrávání:", _cmbRecordingMode, "Toggle = stisk zapne/vypne, PTT = drž klávesu pro nahrávání");
 
         // WHISPER MODEL
         AddSep("Whisper model");
@@ -240,5 +249,7 @@ public sealed class SettingsForm : Form
         _settings.CopyToClipboard = _chkClipboard.Checked;
         _settings.Language        = _tbLanguage.Text.Trim();
         _settings.ModelPath       = _tbModelPath.Text.Trim();
+        _settings.RecordingMode   = _cmbRecordingMode.SelectedIndex == 1
+            ? RecordingMode.PushToTalk : RecordingMode.Toggle;
     }
 }

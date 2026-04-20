@@ -85,17 +85,18 @@ public sealed class WhatsNewForm : Form
             Dock = DockStyle.Fill,
             AutoScroll = true,
             BackColor = ColBg,
-            Padding = new Padding(0),
+            Padding = new Padding(20, 16, 20, 8),
         };
 
         // Filter entries to show
         var entries = GetEntriesToShow(sinceVersion);
 
-        int y = 16;
+        int y = 0;
         foreach (var entry in entries)
         {
-            var card = BuildVersionCard(entry, scrollPanel.ClientSize.Width - 48);
-            card.Location = new Point(20, y);
+            var card = BuildVersionCard(entry, scrollPanel.ClientSize.Width - 40);
+            card.Location = new Point(0, y);
+            card.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             scrollPanel.Controls.Add(card);
             y += card.Height + 12;
         }
@@ -147,13 +148,16 @@ public sealed class WhatsNewForm : Form
             var g = e.Graphics;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
+            int cardW = card.ClientSize.Width;
+            int iw = cardW - padding * 2;
+
             // Left accent bar
             using var accentBrush = new SolidBrush(ColBadge);
             g.FillRectangle(accentBrush, 0, 0, 4, card.Height);
 
             // Separator line at bottom
             using var sepPen = new Pen(ColSep);
-            g.DrawLine(sepPen, 0, card.Height - 1, card.Width, card.Height - 1);
+            g.DrawLine(sepPen, 0, card.Height - 1, cardW, card.Height - 1);
 
             int yPos = padding;
 
@@ -161,9 +165,9 @@ public sealed class WhatsNewForm : Form
             using var tFont = new Font("Segoe UI", 11f, FontStyle.Bold);
             var title = $"v{entry.Version} – {entry.Title}";
             var tSize = TextRenderer.MeasureText(g, title, tFont,
-                new Size(innerWidth, 0), TextFormatFlags.WordBreak);
+                new Size(iw, 0), TextFormatFlags.WordBreak);
             TextRenderer.DrawText(g, title, tFont,
-                new Rectangle(padding, yPos, innerWidth, tSize.Height),
+                new Rectangle(padding, yPos, iw, tSize.Height),
                 ColText, TextFormatFlags.WordBreak);
             yPos += tSize.Height + 8;
 
@@ -173,9 +177,9 @@ public sealed class WhatsNewForm : Form
             {
                 var text = $"  •  {change}";
                 var iSize = TextRenderer.MeasureText(g, text, iFont,
-                    new Size(innerWidth - 16, 0), TextFormatFlags.WordBreak);
+                    new Size(iw - 16, 0), TextFormatFlags.WordBreak);
                 TextRenderer.DrawText(g, text, iFont,
-                    new Rectangle(padding + 8, yPos, innerWidth - 16, iSize.Height),
+                    new Rectangle(padding + 8, yPos, iw - 16, iSize.Height),
                     ColSub, TextFormatFlags.WordBreak);
                 yPos += iSize.Height + 4;
             }

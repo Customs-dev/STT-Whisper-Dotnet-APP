@@ -8,6 +8,12 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new List<ChangelogEntry>
     {
+        new("1.3.2", "Push-to-Talk režim", new[]
+        {
+            "Nový režim nahrávání Push-to-Talk – drž klávesovou zkratku pro nahrávání, pusť pro přepis",
+            "Volba režimu (Toggle / Push-to-Talk) v Nastavení",
+            "Balloon notifikace zobrazuje aktuální režim a ovládání",
+        }),
         new("1.3.1", "Oprava aktualizace (v3)", new[]
         {
             "Update nejprve vyprázdní current\\ a poté spustí Update.exe apply (prázdný adresář jde přejmenovat)",

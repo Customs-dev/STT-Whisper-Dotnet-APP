@@ -95,8 +95,11 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                     RegisterHotkey();
                     string key = FormatHotkey(_settings.HotkeyModifiers, _settings.HotkeyVirtualKey);
                     string runtime = _transcriber.RuntimeInfo;
+                    string modeHint = _settings.RecordingMode == RecordingMode.PushToTalk
+                        ? $"Zkratka: {key} (drž = nahrávej, pusť = přepiš) [Push-to-Talk]"
+                        : $"Zkratka: {key} (1× spustí záznamník, 2× zastaví a spustí přepis)";
                     ShowBalloon("Prompto připraven",
-                        $"Zkratka: {key} (1× spustí záznamník, 2× zastaví a spustí přepis)\n" +
+                        $"{modeHint}\n" +
                         $"Vložení přepisu na místo kurzoru chvíli trvá.\n" +
                         $"Runtime: {runtime}", ToolTipIcon.Info, 8000);
 
@@ -244,8 +247,13 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
     private void RegisterHotkey()
     {
         // Odpojit stary handler (pri re-registraci z nastaveni)
-        _hotkey.HotkeyPressed -= OnHotkeyPressed;
-        _hotkey.HotkeyPressed += OnHotkeyPressed;
+        _hotkey.HotkeyPressed  -= OnHotkeyPressed;
+        _hotkey.HotkeyPressed  += OnHotkeyPressed;
+        _hotkey.HotkeyReleased -= OnHotkeyReleased;
+        _hotkey.HotkeyReleased += OnHotkeyReleased;
+
+        // Nastav PTT režim
+        _hotkey.PushToTalkEnabled = _settings.RecordingMode == RecordingMode.PushToTalk;
 
         // Zkus nakonfigurovanou zkratku
         if (_hotkey.Register(_settings.HotkeyModifiers, _settings.HotkeyVirtualKey))
@@ -301,6 +309,18 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
     {
         if (_processing) return;
 
+        if (_settings.RecordingMode == RecordingMode.PushToTalk)
+        {
+            // PTT: stisk = start nahrávání (pokud ještě neběží)
+            if (!_recorder.IsRecording)
+            {
+                PlayStartSound();
+                StartRecording();
+            }
+            return;
+        }
+
+        // Toggle režim: 1× start, 2× stop
         if (_recorder.IsRecording)
         {
             PlayStopSound();
@@ -311,6 +331,16 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             PlayStartSound();
             StartRecording();
         }
+    }
+
+    private void OnHotkeyReleased(object? sender, EventArgs e)
+    {
+        // Pouze pro PTT – uvolnění klávesy zastaví nahrávání a spustí přepis
+        if (_settings.RecordingMode != RecordingMode.PushToTalk) return;
+        if (_processing || !_recorder.IsRecording) return;
+
+        PlayStopSound();
+        StopRecordingAndTranscribe();
     }
 
     private void StartRecording()
