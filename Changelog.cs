@@ -8,6 +8,16 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new List<ChangelogEntry>
     {
+        new("1.4.0", "Bezpečnost & spolehlivost", new[]
+        {
+            "WebSocket server vyžaduje auth token – brání odposlechu přepisů jinými lokálními procesy",
+            "Token se generuje automaticky (kryptograficky bezpečný, URL-safe), v Nastavení lze regenerovat",
+            "Položka v tray menu „Kopírovat URL s tokenem“ pro snadné připojení klientů",
+            "Srozumitelná chybová hláška když mikrofon chybí, je obsazený nebo zakázaný",
+            "Notifikace když je hotkey obsazená a aplikace použije fallback (dříve tichy fallback)",
+            "Tray tooltip ukáže aktuální stav (Načítám model / Připraven / Nahrávám / Přepisuji)",
+            "Validace číselných poliček v Nastavení (port 1024–65535, chunk 0–60 s) přes NumericUpDown",
+        }),
         new("1.3.3", "Modely přežijí aktualizaci", new[]
         {
             "Whisper modely se nyní ukládají do %LOCALAPPDATA%\\Prompto\\models\\ – přežijí aktualizace aplikace",
