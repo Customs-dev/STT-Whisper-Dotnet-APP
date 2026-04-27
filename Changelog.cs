@@ -8,6 +8,12 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new List<ChangelogEntry>
     {
+        new("1.4.1", "Rychlejší první přepis (warmup)", new[]
+        {
+            "Whisper model se po načtení nahrázdno prohání krátkým tichým bufferem (warmup)",
+            "První reálný přepis už není o 1–2 s pomalejší – GPU shadery a buffery jsou předinicializovány",
+            "Čas warmupu se loguje do stt.log (typicky 0,5–1,5 s)",
+        }),
         new("1.4.0", "Bezpečnost & spolehlivost", new[]
         {
             "WebSocket server vyžaduje auth token – brání odposlechu přepisů jinými lokálními procesy",

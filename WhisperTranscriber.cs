@@ -71,6 +71,79 @@ public sealed class WhisperTranscriber : IAsyncDisposable, IDisposable
 
         _initialized = true;
         Log($"Initialize – dokončeno, runtime: {RuntimeInfo}");
+
+        // Warmup: první průchod modelem alokuje GPU/CPU buffery a kompiluje shadery (Vulkan).
+        // Bez warmupu je první reálný přepis o ~1–2 s pomalejší.
+        try { Warmup(); }
+        catch (Exception ex) { Log($"Warmup chyba (ignorována): {ex.Message}"); }
+    }
+
+    /// <summary>
+    /// Provádí jeden „naěrázdno“ průchod modelu nad krátkým tichým WAV bufferem,
+    /// aby se inicializovala GPU/CPU cache a Whisper interni stav dříve, než uživatel začne mluvit.
+    /// </summary>
+    private void Warmup()
+    {
+        if (_processor is null) return;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Log("Warmup – start (0.5 s ticho)");
+
+        using var wav = CreateSilenceWav(durationSeconds: 0.5, sampleRate: 16000);
+        // Sync-over-async je OK – jsme na background threadu bez SynchronizationContextu.
+        // Proces zpracová prazdny audio velmi rychle (1 segment se symbolem ticha nebo žádný).
+        try
+        {
+            ProcessSilentlyAsync(wav).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Log($"Warmup processor chyba: {ex.Message}");
+        }
+        sw.Stop();
+        Log($"Warmup – hotovo za {sw.Elapsed.TotalMilliseconds:F0} ms");
+    }
+
+    private async Task ProcessSilentlyAsync(Stream wav)
+    {
+        if (_processor is null) return;
+        await foreach (var _ in _processor.ProcessAsync(wav))
+        {
+            // segmenty ignorujeme – jen rozběhnout pipeline
+        }
+    }
+
+    private static MemoryStream CreateSilenceWav(double durationSeconds, int sampleRate)
+    {
+        int samples = (int)(sampleRate * durationSeconds);
+        const int channels = 1;
+        const int bitsPerSample = 16;
+        int byteRate = sampleRate * channels * bitsPerSample / 8;
+        int blockAlign = channels * bitsPerSample / 8;
+        int dataSize = samples * blockAlign;
+        int chunkSize = 36 + dataSize;
+
+        var ms = new MemoryStream(44 + dataSize);
+        using var bw = new BinaryWriter(ms, System.Text.Encoding.ASCII, leaveOpen: true);
+        bw.Write("RIFF".ToCharArray());
+        bw.Write(chunkSize);
+        bw.Write("WAVE".ToCharArray());
+        bw.Write("fmt ".ToCharArray());
+        bw.Write(16);                  // PCM fmt chunk size
+        bw.Write((short)1);            // PCM format
+        bw.Write((short)channels);
+        bw.Write(sampleRate);
+        bw.Write(byteRate);
+        bw.Write((short)blockAlign);
+        bw.Write((short)bitsPerSample);
+        bw.Write("data".ToCharArray());
+        bw.Write(dataSize);
+        // Tichá PCM data – zapíšeme nuly explicitně (BinaryWriter neposouvá Length při SetLength).
+        var silence = new byte[dataSize];
+        bw.Write(silence);
+        bw.Flush();
+        ms.Position = 0;
+        return ms;
     }
 
     /// <summary>
