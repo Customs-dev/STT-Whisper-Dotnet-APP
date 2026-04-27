@@ -66,7 +66,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         // WebSocket (volitelné)
         if (_settings.EnableWebSocket)
         {
-            _wsServer = new WebSocketServer(_settings.WebSocketPort);
+            _wsServer = new WebSocketServer(_settings.WebSocketPort, _settings.WebSocketAuthToken);
             try
             {
                 _wsServer.Start();
@@ -102,6 +102,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                     string modeHint = _settings.RecordingMode == RecordingMode.PushToTalk
                         ? $"Zkratka: {key} (drž = nahrávej, pusť = přepiš) [Push-to-Talk]"
                         : $"Zkratka: {key} (1× spustí záznamník, 2× zastaví a spustí přepis)";
+                    SetStatus("Připraven", TrayIconState.Idle);
                     ShowBalloon("Prompto připraven",
                         $"{modeHint}\n" +
                         $"Vložení přepisu na místo kurzoru chvíli trvá.\n" +
@@ -148,6 +149,18 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             string wsUrl = $"ws://localhost:{_settings.WebSocketPort}/stt/";
             var wsItem = new ToolStripMenuItem($"WebSocket: {wsUrl}") { Enabled = false };
             menu.Items.Add(wsItem);
+            // Položka pro kopírování plné URL s tokenem do schránky
+            var wsCopyItem = new ToolStripMenuItem("  Kopírovat URL s tokenem");
+            wsCopyItem.Click += (_, _) =>
+            {
+                try
+                {
+                    Clipboard.SetText($"{wsUrl}?token={_settings.WebSocketAuthToken}");
+                    ShowBalloon("Prompto – WebSocket", "URL s auth tokenem zkopírováno do schránky.", ToolTipIcon.Info, 3000);
+                }
+                catch (Exception ex) { WhisperTranscriber.AppLog($"[WS] copy URL chyba: {ex.Message}"); }
+            };
+            menu.Items.Add(wsCopyItem);
         }
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Ukončit", null, (_, _) => ExitApplication());
@@ -155,7 +168,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         var icon = new NotifyIcon
         {
             Icon = CreateMicIcon(TrayIconState.Idle),
-            Text = "Prompto",
+            Text = "Prompto – Načítám model…",
             Visible = true,
             ContextMenuStrip = menu
         };
@@ -263,6 +276,9 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         if (_hotkey.Register(_settings.HotkeyModifiers, _settings.HotkeyVirtualKey))
             return;
 
+        // Pamatuj si původní zkratku pro hlášení uživateli
+        string requested = FormatHotkey(_settings.HotkeyModifiers, _settings.HotkeyVirtualKey);
+
         // Nakonfigurovana zkratka je obsazena – zkus kandidaty v poradi preference
         // Format: (modifiers, virtualKey)
         // MOD_CONTROL|MOD_SHIFT = 0x06, MOD_CONTROL|MOD_ALT = 0x03
@@ -288,6 +304,12 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                 _settings.HotkeyModifiers = mods;
                 _settings.HotkeyVirtualKey = vk;
                 _settings.Save();
+                string fallback = FormatHotkey(mods, vk);
+                WhisperTranscriber.AppLog($"[Hotkey] {requested} obsazeno → fallback {fallback}");
+                ShowBalloon("Prompto – zkratka změněna",
+                    $"Zkratka {requested} je obsazená jinou aplikací.\n" +
+                    $"Používám {fallback}. Změnit lze v Nastavení.",
+                    ToolTipIcon.Warning, 8000);
                 return;
             }
         }
@@ -358,7 +380,27 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
         _liveInsertEnabled = _settings.EnableWebSocket && _settings.ChunkIntervalSeconds > 0;
         _liveInsertAny = false;
 
-        _recorder.Start();
+        try
+        {
+            _recorder.Start();
+        }
+        catch (AudioRecorder.AudioDeviceException ex)
+        {
+            WhisperTranscriber.AppLog($"[Audio] Start selhal: {ex.Message}");
+            ShowBalloon("Prompto – chyba mikrofonu", ex.Message, ToolTipIcon.Error, 8000);
+            SetStatus("Připraven", TrayIconState.Idle);
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Neočekávaná chyba (pojistka) – stav nesmí zůstat „nahrávám"
+            WhisperTranscriber.AppLog($"[Audio] Start selhal (neoč.): {ex.Message}");
+            ShowBalloon("Prompto – chyba mikrofonu",
+                "Nahrávání nelze spustit.\nDetail: " + ex.Message, ToolTipIcon.Error, 8000);
+            SetStatus("Připraven", TrayIconState.Idle);
+            return;
+        }
+
         SetStatus("Nahrávám...", TrayIconState.Recording);
 
         // Spusť chunk timer (pokud je live mode zapnutý)

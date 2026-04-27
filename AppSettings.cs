@@ -33,6 +33,12 @@ public sealed class AppSettings
     public bool EnableWebSocket { get; set; } = false;
     public int WebSocketPort { get; set; } = 5050;
 
+    /// <summary>
+    /// Auth token vyžadovaný od WebSocket klientů (query ?token=... nebo header Authorization: Bearer ...).
+    /// Pokud je prázdný, vygeneruje se při uložení nastavení.
+    /// </summary>
+    public string WebSocketAuthToken { get; set; } = string.Empty;
+
     // Clipboard – automaticky kopírovat přepis do schránky
     public bool CopyToClipboard { get; set; } = true;
 
@@ -40,6 +46,18 @@ public sealed class AppSettings
     public int ChunkIntervalSeconds { get; set; } = 8;
 
     public static AppSettings Load()
+    {
+        var s = LoadCore();
+        // Vždy zajisti existenci WS auth tokenu (pro existující settings.json bez něj)
+        if (string.IsNullOrWhiteSpace(s.WebSocketAuthToken))
+        {
+            s.WebSocketAuthToken = GenerateAuthToken();
+            try { s.Save(); } catch { /* ignore – persistence není kritická */ }
+        }
+        return s;
+    }
+
+    private static AppSettings LoadCore()
     {
         // 1. Zkus uložiště v AppData (uživatelská nastavení)
         if (File.Exists(ConfigPath))
@@ -72,6 +90,10 @@ public sealed class AppSettings
 
     public void Save()
     {
+        // Auto-generuj WS token, pokud chybí (kryptograficky bezpečný, URL-safe)
+        if (string.IsNullOrWhiteSpace(WebSocketAuthToken))
+            WebSocketAuthToken = GenerateAuthToken();
+
         // Zajisti existenci složky %APPDATA%\Prompto
         var dir = Path.GetDirectoryName(ConfigPath)!;
         Directory.CreateDirectory(dir);
@@ -79,6 +101,15 @@ public sealed class AppSettings
         var json = JsonSerializer.Serialize(this,
             new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(ConfigPath, json);
+    }
+
+    private static string GenerateAuthToken()
+    {
+        var bytes = new byte[24];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        // URL-safe base64 (bez +, /, =)
+        return Convert.ToBase64String(bytes)
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
 }
 

@@ -16,9 +16,54 @@ public sealed class AudioRecorder : IDisposable
 
     public bool IsRecording => _recording;
 
+    /// <summary>
+    /// Vyšší-úrovňová výjimka pro problémy se vstupním zařízením –
+    /// nese uživatelsky srozumitelnú zprávu (caller jí může přímo zobrazit).
+    /// </summary>
+    public sealed class AudioDeviceException : Exception
+    {
+        public AudioDeviceException(string message, Exception? inner = null) : base(message, inner) { }
+    }
+
+    /// <summary>
+    /// Počet dostupných vstupních (mikrofonních) zařízení.
+    /// </summary>
+    public static int GetInputDeviceCount() => WaveInEvent.DeviceCount;
+
+    /// <summary>
+    /// Název výchozího vstupního zařízení (device 0), nebo null pokud žádné není.
+    /// </summary>
+    public static string? GetDefaultInputDeviceName()
+    {
+        try
+        {
+            if (WaveInEvent.DeviceCount <= 0) return null;
+            return WaveInEvent.GetCapabilities(0).ProductName;
+        }
+        catch { return null; }
+    }
+
     public void Start()
     {
         if (_recording) return;
+
+        // 1) Kontrola dostupnosti zařízení – nez sáhneme na NAudio
+        int deviceCount;
+        try { deviceCount = WaveInEvent.DeviceCount; }
+        catch (Exception ex)
+        {
+            throw new AudioDeviceException(
+                "Nepodařilo se zjistit počet zvukových vstupních zařízení. " +
+                "Zkontroluj, zda běží služba Windows Audio.", ex);
+        }
+
+        if (deviceCount <= 0)
+        {
+            throw new AudioDeviceException(
+                "Nebyl nalezen žádný mikrofon.\n" +
+                "Připoj mikrofon a v Nastavení Windows → Soukromí → Mikrofon " +
+                "povol přístup pro desktopové aplikace.");
+        }
 
         _buffer = new MemoryStream();
         _waveIn = new WaveInEvent
@@ -30,7 +75,23 @@ public sealed class AudioRecorder : IDisposable
         _writer = new WaveFileWriter(_buffer, RecordFormat);
 
         _waveIn.DataAvailable += OnDataAvailable;
-        _waveIn.StartRecording();
+        try
+        {
+            _waveIn.StartRecording();
+        }
+        catch (Exception ex)
+        {
+            // Cleanup rozčasovaných zdrojů, aby objekt zůstal v "not recording" stavu
+            try { _waveIn.DataAvailable -= OnDataAvailable; } catch { }
+            try { _waveIn.Dispose(); } catch { }
+            try { _writer.Dispose(); } catch { }
+            try { _buffer.Dispose(); } catch { }
+            _waveIn = null; _writer = null; _buffer = null;
+
+            throw new AudioDeviceException(
+                "Mikrofon nelze otevřít. Může být využíván jinou aplikací, zakázán " +
+                "v nastavení Windows nebo odpojen.\nDetail: " + ex.Message, ex);
+        }
         _recording = true;
     }
 

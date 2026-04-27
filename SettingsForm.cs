@@ -11,15 +11,15 @@ public sealed class SettingsForm : Form
     private static readonly Color ColSub    = Color.FromArgb(90, 105, 130);
 
     private readonly AppSettings _settings;
-    private readonly TextBox     _tbHotkey;
-    private readonly TextBox     _tbModelPath;
-    private readonly TextBox     _tbLanguage;
-    private readonly CheckBox    _chkWs;
-    private readonly TextBox     _tbWsPort;
-    private readonly TextBox     _tbChunkSeconds;
-    private readonly CheckBox    _chkClipboard;
-    private readonly ComboBox    _cmbRecordingMode;
-    private bool                 _capturingHotkey;
+    private readonly TextBox       _tbHotkey;
+    private readonly TextBox       _tbModelPath;
+    private readonly TextBox       _tbLanguage;
+    private readonly CheckBox      _chkWs;
+    private readonly NumericUpDown _numWsPort;
+    private readonly NumericUpDown _numChunkSeconds;
+    private readonly CheckBox      _chkClipboard;
+    private readonly ComboBox      _cmbRecordingMode;
+    private bool                   _capturingHotkey;
 
     public SettingsForm(AppSettings settings)
     {
@@ -33,7 +33,7 @@ public sealed class SettingsForm : Form
         BackColor       = ColBg;
         Font            = new Font("Segoe UI", 9.5f);
         AutoScaleMode   = AutoScaleMode.Font;
-        ClientSize      = new Size(500, 890);
+        ClientSize      = new Size(500, 990);
 
         // TABLE – důležité: Fill se musí přidat PŘED Top
         var tbl = new TableLayoutPanel {
@@ -154,23 +154,65 @@ public sealed class SettingsForm : Form
 
         // WEBSOCKET SERVER
         AddSep("WebSocket server");
-        _tbChunkSeconds = new TextBox
+        _numChunkSeconds = new NumericUpDown
         {
-            Text = _settings.ChunkIntervalSeconds.ToString(),
+            Minimum = 0,
+            Maximum = 60,
+            Value = Math.Clamp(_settings.ChunkIntervalSeconds, 0, 60),
             BackColor = Color.White,
-            Enabled = _settings.EnableWebSocket
+            Enabled = _settings.EnableWebSocket,
         };
-        _tbWsPort = new TextBox { Text = _settings.WebSocketPort.ToString(), Enabled = _settings.EnableWebSocket, BackColor = Color.White };
+        _numWsPort = new NumericUpDown
+        {
+            Minimum = 1024,
+            Maximum = 65535,
+            Value = Math.Clamp(_settings.WebSocketPort, 1024, 65535),
+            ThousandsSeparator = false,
+            Enabled = _settings.EnableWebSocket,
+            BackColor = Color.White,
+        };
         _chkWs = new CheckBox { Text = "Zapnout WebSocket server", Checked = _settings.EnableWebSocket };
         _chkWs.CheckedChanged += (_, _) =>
         {
-            _tbWsPort.Enabled = _chkWs.Checked;
-            _tbChunkSeconds.Enabled = _chkWs.Checked;
+            _numWsPort.Enabled = _chkWs.Checked;
+            _numChunkSeconds.Enabled = _chkWs.Checked;
         };
         AddRow("", _chkWs);
 
-        AddRow("Port:", _tbWsPort, "Výchozí: 5050");
-        AddRow("Chunk interval (s):", _tbChunkSeconds, "0 = vypnuto, doporučeno 2-4 s pro živý stream");
+        AddRow("Port:", _numWsPort, "Rozsah 1024–65535. Výchozí: 5050");
+        AddRow("Chunk interval (s):", _numChunkSeconds, "0 = vypnuto, doporučeno 2–4 s pro živý stream");
+
+        // AUTH TOKEN – read-only zobrazení s možností regenerace a kopírování
+        var tbToken = new TextBox
+        {
+            Text = _settings.WebSocketAuthToken,
+            ReadOnly = true,
+            BackColor = Color.White,
+            Font = new Font("Consolas", 8.5f),
+        };
+        AddRow("Auth token:", tbToken, "Klienti se musí připojit s ?token=... v URL nebo Authorization: Bearer ...");
+
+        var tokenBtnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
+        var btnCopyToken = new Button { Text = "Kopírovat", AutoSize = true, FlatStyle = FlatStyle.Flat };
+        btnCopyToken.Click += (_, _) =>
+        {
+            try { Clipboard.SetText(tbToken.Text); }
+            catch { /* clipboard může být zamčen */ }
+        };
+        var btnRegenToken = new Button { Text = "Vygenerovat nový", AutoSize = true, FlatStyle = FlatStyle.Flat };
+        btnRegenToken.Click += (_, _) =>
+        {
+            if (MessageBox.Show(this,
+                    "Po regeneraci tokenu se všichni připojení klienti odpojí a budou potřebovat nové URL.\nPokračovat?",
+                    "Regenerace tokenu", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+            _settings.WebSocketAuthToken = string.Empty;
+            _settings.Save(); // Save() vygeneruje nový token
+            tbToken.Text = _settings.WebSocketAuthToken;
+        };
+        tokenBtnPanel.Controls.Add(btnCopyToken);
+        tokenBtnPanel.Controls.Add(btnRegenToken);
+        AddRow("", tokenBtnPanel);
 
         // SPACER
         tbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -243,8 +285,8 @@ public sealed class SettingsForm : Form
 
     private void ApplyToSettings()
     {
-        if (int.TryParse(_tbWsPort.Text, out var p)) _settings.WebSocketPort = p;
-        if (int.TryParse(_tbChunkSeconds.Text, out var c)) _settings.ChunkIntervalSeconds = Math.Max(0, c);
+        _settings.WebSocketPort = (int)_numWsPort.Value;
+        _settings.ChunkIntervalSeconds = (int)_numChunkSeconds.Value;
         _settings.EnableWebSocket = _chkWs.Checked;
         _settings.CopyToClipboard = _chkClipboard.Checked;
         _settings.Language        = _tbLanguage.Text.Trim();

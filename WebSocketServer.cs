@@ -13,6 +13,7 @@ public sealed class WebSocketServer : IAsyncDisposable
 {
     private readonly HttpListener _listener;
     private readonly int _port;
+    private readonly string _authToken;
     private readonly List<WebSocket> _clients = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
     private CancellationTokenSource? _cts;
@@ -20,17 +21,23 @@ public sealed class WebSocketServer : IAsyncDisposable
 
     public bool IsRunning { get; private set; }
 
-    public WebSocketServer(int port)
+    public WebSocketServer(int port, string authToken)
     {
+        if (string.IsNullOrWhiteSpace(authToken))
+            throw new ArgumentException("Auth token nesmí být prázdný.", nameof(authToken));
         _port = port;
+        _authToken = authToken;
         _listener = new HttpListener();
-        // Přidáme oba prefixes – klient může použít 127.0.0.1 i localhost
+        // Loopback only – HttpListener s konkrétním hostem neváže na veřejná rozhraní
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/stt/");
         _listener.Prefixes.Add($"http://localhost:{port}/stt/");
     }
 
-    /// <summary>URL pro WebSocket klienty (ws://localhost:{port}/stt/)</summary>
-    public string ClientUrl => $"ws://localhost:{_port}/stt/";
+    /// <summary>URL pro WebSocket klienty včetně auth tokenu.</summary>
+    public string ClientUrl => $"ws://localhost:{_port}/stt/?token={_authToken}";
+
+    /// <summary>URL bez tokenu – pro zobrazení v UI bez prozrazení secret.</summary>
+    public string PublicUrl => $"ws://localhost:{_port}/stt/";
 
     public void Start()
     {
@@ -121,8 +128,46 @@ public sealed class WebSocketServer : IAsyncDisposable
                 continue;
             }
 
+            // Auth: ?token=... nebo Authorization: Bearer ...
+            // Loopback-only binding již omezuje přístup, ale token brání lokálním procesům
+            // a CSRF z prohlížeče (origin neni při WS handshake spolehlivě kontrolovatelný).
+            if (!IsAuthorized(ctx.Request))
+            {
+                WhisperTranscriber.AppLog($"[WS] Odmítnutý handshake (neplatný token) z {ctx.Request.RemoteEndPoint}");
+                ctx.Response.StatusCode = 401;
+                ctx.Response.StatusDescription = "Unauthorized";
+                ctx.Response.Close();
+                continue;
+            }
+
             _ = HandleClientAsync(ctx, ct);
         }
+    }
+
+    private bool IsAuthorized(HttpListenerRequest req)
+    {
+        // 1) Query string ?token=...
+        var qsToken = req.QueryString["token"];
+        if (!string.IsNullOrEmpty(qsToken) && FixedTimeEquals(qsToken, _authToken))
+            return true;
+
+        // 2) Authorization: Bearer ...
+        var auth = req.Headers["Authorization"];
+        if (!string.IsNullOrEmpty(auth) && auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            var bearer = auth.Substring("Bearer ".Length).Trim();
+            if (FixedTimeEquals(bearer, _authToken)) return true;
+        }
+
+        return false;
+    }
+
+    private static bool FixedTimeEquals(string a, string b)
+    {
+        // Constant-time srovnání – brání timing attackům
+        var ba = Encoding.UTF8.GetBytes(a);
+        var bb = Encoding.UTF8.GetBytes(b);
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(ba, bb);
     }
 
     private async Task HandleClientAsync(HttpListenerContext ctx, CancellationToken ct)
