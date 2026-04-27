@@ -49,4 +49,16 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SttApp.Tests" />
+  </ItemGroup>
+
+  <!-- Test project is a sibling subfolder; exclude it from main project's globs -->
+  <ItemGroup>
+    <Compile Remove="SttApp.Tests\**" />
+    <EmbeddedResource Remove="SttApp.Tests\**" />
+    <None Remove="SttApp.Tests\**" />
+    <Content Remove="SttApp.Tests\**" />
+  </ItemGroup>
+
 </Project>

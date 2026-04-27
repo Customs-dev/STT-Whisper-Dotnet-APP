@@ -20,11 +20,20 @@ public sealed class TranscriptionHistory
     public IReadOnlyList<TranscriptionHistoryItem> Items => _items;
 
     public TranscriptionHistory(int maxItems = 50)
+        : this(
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Prompto", "history.json"),
+            maxItems)
+    { }
+
+    /// <summary>
+    /// Konstruktor s vlastní cestou k souboru – používán unit testy.
+    /// </summary>
+    public TranscriptionHistory(string filePath, int maxItems = 50)
     {
         _maxItems = maxItems;
-        _filePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Prompto", "history.json");
+        _filePath = filePath;
         Load();
     }
 

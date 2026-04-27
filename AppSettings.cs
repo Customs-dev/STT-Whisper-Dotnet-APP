@@ -103,7 +103,10 @@ public sealed class AppSettings
         File.WriteAllText(ConfigPath, json);
     }
 
-    private static string GenerateAuthToken()
+    private static string GenerateAuthToken() => GenerateAuthTokenInternal();
+
+    /// <summary>Test hook – generování tokenu jako pure funkce.</summary>
+    internal static string GenerateAuthTokenInternal()
     {
         var bytes = new byte[24];
         System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);

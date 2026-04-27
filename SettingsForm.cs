@@ -33,7 +33,7 @@ public sealed class SettingsForm : Form
         BackColor       = ColBg;
         Font            = new Font("Segoe UI", 9.5f);
         AutoScaleMode   = AutoScaleMode.Font;
-        ClientSize      = new Size(500, 990);
+        ClientSize      = new Size(500, 1050);
 
         // TABLE – důležité: Fill se musí přidat PŘED Top
         var tbl = new TableLayoutPanel {
