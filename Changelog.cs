@@ -8,6 +8,12 @@ public static class Changelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries = new List<ChangelogEntry>
     {
+        new("1.4.2", "Oprava přepisu dlouhých nahrávek", new[]
+        {
+            "Timeout přepisu už není napevno 3 minuty, ale škáluje se podle délky nahrávky",
+            "Dlouhá jednání/schůzky (30+ min) se už nepřeruší uprostřed inference",
+            "Balloon o timeoutu hlásí skutečný limit místo natvrdo napsaných 3 minut",
+        }),
         new("1.4.1", "Rychlejší první přepis (warmup)", new[]
         {
             "Whisper model se po načtení nahrázdno prohání krátkým tichým bufferem (warmup)",

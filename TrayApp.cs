@@ -476,19 +476,15 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
 
         Task.Run(async () =>
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-
-            using var progressTimer = new System.Threading.Timer(_ =>
-            {
-                _uiContext.Post(_ => ShowBalloon("Prompto – přepisuji...",
-                    $"Inference stále běží.\nRuntime: {_transcriber.RuntimeInfo}", ToolTipIcon.Info, 6000), null);
-            }, null, 15_000, System.Threading.Timeout.Infinite);
+            // Krátký timeout jen pro dokončení posledního chunku a uzavření nahrávky.
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
             MemoryStream? wavStream = null;
+            TimeSpan transcribeTimeout = TimeSpan.FromMinutes(3);
             try
             {
                 // Počkej až doběhne případný posledního chunk
-                await _chunkSem.WaitAsync(cts.Token);
+                await _chunkSem.WaitAsync(stopCts.Token);
 
                 wavStream = await _recorder.StopAndGetWavAsync();
                 long wavBytes = wavStream.Length;
@@ -508,6 +504,19 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
                         $"Nahráno pouze {wavBytes} B.", ToolTipIcon.Warning), null);
                     return;
                 }
+
+                // Timeout přepisu se odvíjí od délky nahrávky (dlouhá jednání > 3 min inference).
+                // Formát nahrávky: 16 kHz, 16-bit, mono → 32000 B/s.
+                const int bytesPerSecond = 16000 * 2;
+                double estimatedAudioSeconds = Math.Max(0, wavBytes - 44) / (double)bytesPerSecond;
+                transcribeTimeout = TimeSpan.FromSeconds(Math.Max(180, estimatedAudioSeconds * 3 + 60));
+                using var cts = new CancellationTokenSource(transcribeTimeout);
+
+                using var progressTimer = new System.Threading.Timer(_ =>
+                {
+                    _uiContext.Post(_ => ShowBalloon("Prompto – přepisuji...",
+                        $"Inference stále běží.\nRuntime: {_transcriber.RuntimeInfo}", ToolTipIcon.Info, 6000), null);
+                }, null, 15_000, 30_000);
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 var segmentCallback = BuildSegmentStreamingCallback(hwnd, childHint, allowLiveInsert: _liveInsertEnabled);
@@ -561,7 +570,7 @@ public sealed class TrayApp : ApplicationContext, IAsyncDisposable
             catch (OperationCanceledException)
             {
                 _uiContext.Post(_ => ShowBalloon("Prompto – timeout",
-                    "Přepis trval déle než 3 minuty.\n" +
+                    $"Přepis trval déle než {transcribeTimeout.TotalMinutes:F0} min.\n" +
                     $"Runtime: {_transcriber.RuntimeInfo}", ToolTipIcon.Error), null);
             }
             catch (Exception ex)
